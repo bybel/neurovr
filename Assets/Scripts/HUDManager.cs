@@ -22,7 +22,7 @@ public class HUDManager : MonoBehaviour
         score = 0;
         UpdateScoreText();
 
-        // Add listeners to the buttons
+        // Add listeners for the buttons
         easyButton.onClick.AddListener(() => SetDifficulty("Easy"));
         mediumButton.onClick.AddListener(() => SetDifficulty("Medium"));
         hardButton.onClick.AddListener(() => SetDifficulty("Hard"));
@@ -31,7 +31,7 @@ public class HUDManager : MonoBehaviour
     public void SetDifficulty(string difficulty)
     {
         Debug.Log("Difficulty set to: " + difficulty);
-        // Add your logic here to change the game's difficulty
+        // Add logic for game difficulty 
 
         // Deactivate the difficulty buttons
         if (difficultyButtons != null)
