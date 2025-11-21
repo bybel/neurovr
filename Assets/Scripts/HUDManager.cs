@@ -1,181 +1,291 @@
-
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using TMPro;
+using NeuroReachVR.Core;
+using NeuroReachVR.UI;
+using NeuroReachVR.Utils;
 
-public class HUDManager : MonoBehaviour
+/// <summary>
+/// Modern, elegant HUD Manager using MenuManager base class
+/// Eliminates duplicate SetActive calls, uses ServiceLocator and ValidationHelper
+/// </summary>
+public class HUDManager : MenuManager
 {
-    [Header("Main Menu")]
-    public GameObject mainMenu;
-    public Button SelectTaskButton;
-    public Button PatientLoginButton;
-    public Button QuitButton;
+    [Header("Menu GameObjects")]
+    [SerializeField] private GameObject mainMenu;
+    [SerializeField] private GameObject patientLoginMenu;
+    [SerializeField] private GameObject selectTaskMenu;
+    [SerializeField] private GameObject difficultyMenu;
+    [SerializeField] private GameObject startTrialMenu;
 
-    [Header("Patient Login Menu")]
-    public GameObject patientLoginMenu; // Instead we could make a list selector
-    public Button Log2CSV;              //to choose for between given patients
-    public TMP_InputField patientIDInput;
-    public Button log2MainMenuButton;
+    [Header("Main Menu Buttons")]
+    [SerializeField] private Button selectTaskButton;
+    [SerializeField] private Button patientLoginButton;
+    [SerializeField] private Button quitButton;
 
+    [Header("Patient Login")]
+    [SerializeField] private Button loginButton;
+    [SerializeField] private TMP_InputField patientIDInput;
+    [SerializeField] private Button loginBackButton;
 
-    [Header("Select Task Menu")]
-    public GameObject selectTaskMenu;
-    public Button SpiralTaskButton;
-    public Button LineTaskButton;
-    public Button BackToMainMenuButton;
+    [Header("Task Selection")]
+    [SerializeField] private Button balloonTaskButton;
+    [SerializeField] private Button pathTaskButton;
+    [SerializeField] private Button spiralTaskButton;
+    [SerializeField] private Button taskBackButton;
 
-    [Header("Difficulty Settings")]
-    public GameObject difficultyButtons;
-    public Button easyButton;
-    public Button mediumButton;
-    public Button hardButton;
+    [Header("Difficulty Buttons")]
+    [SerializeField] private Button easyButton;
+    [SerializeField] private Button mediumButton;
+    [SerializeField] private Button hardButton;
 
-    [Header("Start Trial Menu")]
-    public GameObject startTrialMenu;
-    public Button startTrialButton;
+    [Header("Start Trial")]
+    [SerializeField] private Button startTrialButton;
 
     [Header("Score Display")]
-    public TextMeshProUGUI scoreText;
+    [SerializeField] private TextMeshProUGUI scoreText;
+    [SerializeField] private TextMeshProUGUI progressText;
 
-    
+    [Header("Main Menu Title")]
+    [SerializeField] private TextMeshProUGUI mainMenuTitleText;
 
+    private GameManager gameManager;
     private int score;
+    private TaskType selectedTask;
+    private DifficultyLevel selectedDifficulty;
 
-    void Start()
+    protected override void Awake()
     {
-        // Initialize the score
+        base.Awake();
+
+        // Get GameManager via ServiceLocator
+        gameManager = ServiceLocator.Get<GameManager>();
+
+        // Validate all required fields
+        ValidateRequiredComponents();
+    }
+
+    private void Start()
+    {
+        InitializeButtonListeners();
         score = 0;
         UpdateScoreText();
-
-        ShowMainMenu();
-
-
-        // Add listeners for the buttons
         
-        if (mainMenu != null)
+        // Set welcome message
+        if (mainMenuTitleText != null)
         {
-            SelectTaskButton.onClick.AddListener(ShowSelectTaskMenu);
-            PatientLoginButton.onClick.AddListener(ShowPatientLoginMenu);
-            QuitButton.onClick.AddListener(Application.Quit);
+            mainMenuTitleText.text = "Welcome to NeuroVR!";
         }
+        
+        ShowMenu("main");
+    }
 
-        if (patientLoginMenu != null)
+    protected override void InitializeMenus()
+    {
+        Debug.Log("[HUDManager] Registering menus...");
+        
+        // Register all menus
+        RegisterMenu("main", mainMenu);
+        RegisterMenu("patientLogin", patientLoginMenu);
+        RegisterMenu("selectTask", selectTaskMenu);
+        RegisterMenu("difficulty", difficultyMenu);
+        RegisterMenu("startTrial", startTrialMenu);
+        
+        Debug.Log($"[HUDManager] Registered {menus.Count} menus.");
+    }
+
+    private void ValidateRequiredComponents()
+    {
+        // Validate using ValidationHelper
+        ValidationHelper.ValidateRequiredFields(this,
+            (mainMenu, "Main Menu"),
+            (patientLoginMenu, "Patient Login Menu"),
+            (selectTaskMenu, "Select Task Menu"),
+            (difficultyMenu, "Difficulty Menu"),
+            (startTrialMenu, "Start Trial Menu"),
+            (scoreText, "Score Text"),
+            (progressText, "Progress Text")
+        );
+
+        if (gameManager == null)
         {
-            Log2CSV.onClick.AddListener(() =>
+            Debug.LogError("[HUDManager] GameManager not found! Please ensure GameManager exists in the scene.");
+        }
+    }
+
+    private void InitializeButtonListeners()
+    {
+        Debug.Log("[HUDManager] Initializing button listeners...");
+        
+        // Check EventSystem - Use InputSystemUIInputModule for new Input System
+        EventSystem eventSystem = FindFirstObjectByType<EventSystem>();
+        if (eventSystem == null)
+        {
+            Debug.LogError("[HUDManager] EventSystem not found! Creating one...");
+            GameObject es = new GameObject("EventSystem");
+            eventSystem = es.AddComponent<EventSystem>();
+            es.AddComponent<InputSystemUIInputModule>(); // Use new Input System module
+        }
+        else
+        {
+            // Remove old StandaloneInputModule if present
+            var oldModule = eventSystem.GetComponent<StandaloneInputModule>();
+            if (oldModule != null)
             {
-                string patientID = patientIDInput.text;
-                Debug.Log("Logging data for Patient ID: " + patientID);
-                // Add logic to log data to CSV for the given patient ID
-            });
-            log2MainMenuButton.onClick.AddListener(ShowMainMenu);
+                Debug.LogWarning("[HUDManager] Removing old StandaloneInputModule (incompatible with new Input System)...");
+                Destroy(oldModule);
+            }
+            
+            // Add InputSystemUIInputModule if missing
+            if (eventSystem.GetComponent<InputSystemUIInputModule>() == null)
+            {
+                Debug.LogWarning("[HUDManager] InputSystemUIInputModule missing! Adding it...");
+                eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
+            }
         }
-
-
-        if (selectTaskMenu != null)
+        
+        // Main Menu
+        if (selectTaskButton != null)
         {
-            SpiralTaskButton.onClick.AddListener(ShowDifficultyMenu);
-            LineTaskButton.onClick.AddListener(ShowDifficultyMenu);
-            BackToMainMenuButton.onClick.AddListener(ShowMainMenu);
+            selectTaskButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Select Task clicked"); ShowMenu("selectTask"); });
         }
-
-        if (difficultyButtons != null)
+        else Debug.LogError("[HUDManager] selectTaskButton is NULL!");
+        
+        if (patientLoginButton != null)
         {
-            easyButton.onClick.AddListener(() => SetDifficulty("Easy"));
-            mediumButton.onClick.AddListener(() => SetDifficulty("Medium"));
-            hardButton.onClick.AddListener(() => SetDifficulty("Hard"));
+            patientLoginButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Patient Login clicked"); ShowMenu("patientLogin"); });
         }
+        else Debug.LogError("[HUDManager] patientLoginButton is NULL!");
+        
+        if (quitButton != null)
+            quitButton.onClick.AddListener(QuitApplication);
+        else Debug.LogError("[HUDManager] quitButton is NULL!");
 
+        // Patient Login
+        if (loginButton != null)
+        {
+            loginButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Login clicked"); OnLoginClicked(); });
+        }
+        else Debug.LogError("[HUDManager] loginButton is NULL!");
+        
+        if (loginBackButton != null)
+            loginBackButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Login Back clicked"); ShowMenu("main"); });
+        else Debug.LogError("[HUDManager] loginBackButton is NULL!");
+
+        // Task Selection
+        if (balloonTaskButton != null)
+            balloonTaskButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Balloon Task clicked"); OnTaskSelected(TaskType.BalloonPop); });
+        else Debug.LogError("[HUDManager] balloonTaskButton is NULL!");
+        
+        if (pathTaskButton != null)
+            pathTaskButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Path Task clicked"); OnTaskSelected(TaskType.PathTracing); });
+        else Debug.LogError("[HUDManager] pathTaskButton is NULL!");
+        
+        if (spiralTaskButton != null)
+            spiralTaskButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Spiral Task clicked"); OnTaskSelected(TaskType.SpiralTracing); });
+        else Debug.LogError("[HUDManager] spiralTaskButton is NULL!");
+        
+        if (taskBackButton != null)
+            taskBackButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Task Back clicked"); ShowMenu("main"); });
+        else Debug.LogError("[HUDManager] taskBackButton is NULL!");
+
+        // Difficulty
+        if (easyButton != null)
+            easyButton.onClick.AddListener(() => OnDifficultySelected(DifficultyLevel.Easy));
+        if (mediumButton != null)
+            mediumButton.onClick.AddListener(() => OnDifficultySelected(DifficultyLevel.Medium));
+        if (hardButton != null)
+            hardButton.onClick.AddListener(() => OnDifficultySelected(DifficultyLevel.Hard));
+
+        // Start Trial
         if (startTrialButton != null)
-        {
-            startTrialButton.onClick.AddListener(ShowDifficultyMenu);
-        }
+            startTrialButton.onClick.AddListener(OnStartTrialClicked);
+        
+        Debug.Log("[HUDManager] Button listeners initialized.");
     }
 
-
-    public void ShowMainMenu()
+    private void Update()
     {
-        // Hide all other menus and show the main menu
-        if (patientLoginMenu != null)
+        // Update score and progress from current task
+        if (gameManager?.CurrentTask != null)
         {
-            patientLoginMenu.SetActive(false);
-        }
-        if (selectTaskMenu != null)
-        {
-            selectTaskMenu.SetActive(false);
-        }
-        if (startTrialMenu != null)
-        {
-            startTrialMenu.SetActive(false);
-        }
-        if (mainMenu != null)
-        {
-            mainMenu.SetActive(true);
+            score = gameManager.CurrentTask.Score;
+            UpdateScoreText();
+            UpdateProgressText(gameManager.CurrentTask.Progress);
         }
     }
 
-    public void ShowPatientLoginMenu()
+    // Button Callbacks
+    private void OnLoginClicked()
     {
-        // Hide main menu and show patient login menu
-        if (mainMenu != null)
+        Debug.Log("[HUDManager] OnLoginClicked called");
+        
+        string patientID = patientIDInput?.text;
+        Debug.Log($"[HUDManager] Patient ID from input: '{patientID}'");
+
+        if (!ValidationHelper.ValidateString(patientID, "Patient ID"))
         {
-            mainMenu.SetActive(false);
+            Debug.LogWarning("[HUD] Please enter a valid Patient ID");
+            return;
         }
-        if (patientLoginMenu != null)
+
+        if (gameManager != null)
         {
-            patientLoginMenu.SetActive(true);
+            gameManager.SetPatientID(patientID);
+            Debug.Log($"[HUD] Patient ID set: {patientID}");
+            ShowMenu("selectTask");
+        }
+        else
+        {
+            Debug.LogError("[HUDManager] GameManager is NULL! Cannot set patient ID.");
         }
     }
 
-    public void ShowSelectTaskMenu()
+    private void OnTaskSelected(TaskType taskType)
     {
-        // Hide patient login menu and show select task menu
-        if (patientLoginMenu != null)
-        {
-            patientLoginMenu.SetActive(false);
-        }
-        if (selectTaskMenu != null)
-        {
-            selectTaskMenu.SetActive(true);
-        }
+        Debug.Log($"[HUDManager] OnTaskSelected called: {taskType}");
+        selectedTask = taskType;
+        Debug.Log($"[HUD] Task selected: {taskType}");
+        ShowMenu("difficulty");
     }
 
-    public void ShowDifficultyMenu()
+    private void OnDifficultySelected(DifficultyLevel difficulty)
     {
-        // Hide the select task menu and show the difficulty menu
-        if (selectTaskMenu != null)
-        {
-            selectTaskMenu.SetActive(false);
-        }
-        if (difficultyButtons != null)
-        {
-            difficultyButtons.SetActive(true);
-        }
+        selectedDifficulty = difficulty;
+        Debug.Log($"[HUD] Difficulty set to: {difficulty}");
+
+        gameManager?.SetDifficulty(difficulty);
+        ShowMenu("startTrial");
     }
 
-    public void ShowStartTrialMenu()
+    private void OnStartTrialClicked()
     {
-        // Hide the difficulty menu and show the start trial menu
-        if (difficultyButtons != null)
+        if (!ValidationHelper.ValidateComponent(gameManager, "GameManager"))
         {
-            difficultyButtons.SetActive(false);
+            Debug.LogError("[HUD] Cannot start trial - GameManager is null!");
+            return;
         }
-        if (startTrialMenu != null)
-        {
-            startTrialMenu.SetActive(true);
-        }
+
+        Debug.Log($"[HUD] Starting task: {selectedTask} at difficulty: {selectedDifficulty}");
+
+        // Hide all menus
+        HideAllMenus();
+
+        // Start the task
+        gameManager.StartTask(selectedTask);
     }
 
-    public void SetDifficulty(string difficulty)
+    private void QuitApplication()
     {
-        Debug.Log("Difficulty set to: " + difficulty);
-        // Add logic for game difficulty 
-
-        if (difficultyButtons != null)
-        {
-            difficultyButtons.SetActive(false);
-        }
+        if (gameManager != null)
+            gameManager.QuitApplication();
+        else
+            Application.Quit();
     }
 
+    // UI Updates
     public void AddScore(int points)
     {
         score += points;
@@ -186,7 +296,19 @@ public class HUDManager : MonoBehaviour
     {
         if (scoreText != null)
         {
-            scoreText.text = "Score: " + score;
+            scoreText.text = $"Score: {score}";
         }
     }
+
+    private void UpdateProgressText(float progress)
+    {
+        if (progressText != null)
+        {
+            progressText.text = $"Progress: {Mathf.RoundToInt(progress * 100)}%";
+        }
+    }
+
+    // Public API for external access
+    public void ShowMainMenu() => ShowMenu("main");
+    public void ShowTaskCompletionMenu() => ShowMenu("main"); // Can be extended with completion menu
 }
