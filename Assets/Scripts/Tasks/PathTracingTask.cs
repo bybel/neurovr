@@ -29,18 +29,40 @@ namespace NeuroReachVR.Tasks
         protected List<TraceablePath> completedPaths;
         protected bool isTracing;
         protected int pathsCompleted;
+        protected float pathStartTime; // Time when current path tracing began
         
         protected override void Start()
         {
             base.Start();
             completedPaths = new List<TraceablePath>();
+            
+            // Auto-find pathPrefab if not assigned
+            if (pathPrefab == null)
+            {
+                // Try to find TraceablePath in scene (might be a template object)
+                pathPrefab = FindFirstObjectByType<TraceablePath>(FindObjectsInactive.Include);
+                
+                // Try to load from Resources folder
+                if (pathPrefab == null)
+                {
+                    var prefabObj = Resources.Load<GameObject>("TraceablePath");
+                    if (prefabObj != null)
+                        pathPrefab = prefabObj.GetComponent<TraceablePath>();
+                }
+                
+                if (pathPrefab != null)
+                    Debug.Log($"[{GetType().Name}] Auto-found TraceablePath prefab");
+                else
+                    Debug.LogError($"[{GetType().Name}] TraceablePath prefab not assigned! Please assign in Inspector or place in Resources folder.");
+            }
         }
         
         protected override void UpdateTask()
         {
-            if (!inputHandler.HasValidInput || inputHandler.CurrentMode != InputMode.Stylus)
+            // Support all input modes: Stylus, Simulator (mouse), Hand tracking
+            if (!inputHandler.HasValidInput)
             {
-                Debug.LogWarning("[PathTracing] Stylus input required");
+                Debug.LogWarning("[PathTracing] No valid input detected");
                 return;
             }
             
@@ -61,13 +83,28 @@ namespace NeuroReachVR.Tasks
         
         private void GenerateNewPath()
         {
+            if (pathPrefab == null)
+            {
+                Debug.LogError("[PathTracingTask] Path prefab not assigned! Please assign a TraceablePath prefab in the Inspector.");
+                return;
+            }
+            
             List<Vector3> pathPoints = GeneratePathPoints();
             
             GameObject pathObj = Instantiate(pathPrefab.gameObject);
             currentPath = pathObj.GetComponent<TraceablePath>();
+            
+            if (currentPath == null)
+            {
+                Debug.LogError("[PathTracingTask] Instantiated path prefab is missing TraceablePath component!");
+                Destroy(pathObj);
+                return;
+            }
+            
             currentPath.InitializePath(pathPoints);
             
             isTracing = true;
+            pathStartTime = elapsedTime; // Record when path tracing begins
         }
         
         protected virtual List<Vector3> GeneratePathPoints()
@@ -87,17 +124,21 @@ namespace NeuroReachVR.Tasks
         
         private void UpdateTracing()
         {
-            if (!isTracing || !inputHandler.IsStylusPressed) return;
+            if (!isTracing) return;
             
-            Vector3 stylusPos = inputHandler.Position;
-            currentPath.UpdateTracing(stylusPos);
+            // Support all input modes: Stylus press, Mouse click, or Hand pinch
+            bool isPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching;
+            if (!isPressed) return;
+            
+            Vector3 inputPos = inputHandler.Position;
+            currentPath.UpdateTracing(inputPos);
         }
         
         protected virtual void OnPathCompleted()
         {
             float accuracy = currentPath.Accuracy;
             bool success = accuracy >= minAccuracy;
-            float completionTime = elapsedTime - (currentPath != null ? currentPath.Progress * sessionDuration : 0f);
+            float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
             
             if (success)
             {

@@ -8,6 +8,7 @@ namespace NeuroReachVR.Data
     /// Collects kinematic data: position, velocity, acceleration, joint angles
     /// Tracks movement for smoothness and deviation calculations
     /// NOW WITH: 60Hz sampling, improved velocity calculation, tremor filtering
+    /// Uses Queue<T> for O(1) FIFO operations instead of List.RemoveAt(0) which is O(n)
     /// </summary>
     public class KinematicDataCollector : MonoBehaviour
     {
@@ -18,22 +19,25 @@ namespace NeuroReachVR.Data
         [SerializeField] private float smoothingFactor = 0.3f; // Lower = more smoothing
 
         private InputHandler inputHandler;
-        private List<KinematicSample> samples;
+        private Queue<KinematicSample> samplesQueue; // Queue for O(1) enqueue/dequeue
+        private KinematicSample latestSample; // Cache latest sample for O(1) access
         private float lastSampleTime;
         private float sampleInterval;
         private Vector3 lastPosition;
         private Vector3 lastVelocity;
         private Vector3 smoothedPosition;
         private bool isFirstSample = true;
+        private bool needsPositionInit = true; // Track when lastPosition needs initialization
 
-        public int SampleCount => samples.Count;
-        // Return reference to avoid copying every time - caller should not modify
-        public List<KinematicSample> Samples => samples;
+        public int SampleCount => samplesQueue.Count;
+        // Convert to list only when needed (called at task end for analysis)
+        // This is acceptable since it's only called once per task completion
+        public List<KinematicSample> Samples => new List<KinematicSample>(samplesQueue);
 
         private void Awake()
         {
             inputHandler = FindFirstObjectByType<InputHandler>(FindObjectsInactive.Include);
-            samples = new List<KinematicSample>();
+            samplesQueue = new Queue<KinematicSample>(maxSamples + 1); // Pre-allocate capacity
             sampleInterval = 1f / sampleRate;
         }
 
@@ -64,11 +68,12 @@ namespace NeuroReachVR.Data
                 rotation = inputHandler.Rotation
             };
 
-            samples.Add(sample);
+            samplesQueue.Enqueue(sample); // O(1) operation
+            latestSample = sample; // Cache for O(1) GetLatestSample()
 
-            // Limit sample count (FIFO queue behavior)
-            if (samples.Count > maxSamples)
-                samples.RemoveAt(0);
+            // Limit sample count (FIFO queue behavior) - O(1) dequeue vs O(n) RemoveAt(0)
+            while (samplesQueue.Count > maxSamples)
+                samplesQueue.Dequeue();
 
             lastPosition = position;
             lastVelocity = velocity;
@@ -90,9 +95,14 @@ namespace NeuroReachVR.Data
 
         private Vector3 CalculateVelocity(Vector3 currentPosition)
         {
-            // Check if this is the first sample
-            if (samples.Count == 0)
+            // Initialize lastPosition from actual hand position on first sample
+            // This prevents velocity spikes from using Vector3.zero as the starting point
+            if (needsPositionInit)
+            {
+                lastPosition = currentPosition;
+                needsPositionInit = false;
                 return Vector3.zero;
+            }
 
             float deltaTime = Time.deltaTime;
             if (deltaTime <= 0f) return lastVelocity;
@@ -110,8 +120,12 @@ namespace NeuroReachVR.Data
 
         public void Clear()
         {
-            samples.Clear();
-            lastPosition = Vector3.zero;
+            samplesQueue.Clear();
+            latestSample = default;
+            // Don't reset lastPosition to Vector3.zero - this caused velocity spikes
+            // when the first sample calculated (currentPosition - Vector3.zero) / deltaTime
+            // Instead, use needsPositionInit flag to initialize from actual hand position
+            needsPositionInit = true;
             lastVelocity = Vector3.zero;
             smoothedPosition = Vector3.zero;
             isFirstSample = true;
@@ -119,7 +133,8 @@ namespace NeuroReachVR.Data
 
         public KinematicSample GetLatestSample()
         {
-            return samples.Count > 0 ? samples[samples.Count - 1] : default;
+            // Return cached latest sample for O(1) access
+            return samplesQueue.Count > 0 ? latestSample : default;
         }
 
         public Vector3 GetSmoothedPosition()

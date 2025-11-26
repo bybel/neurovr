@@ -14,7 +14,6 @@ namespace NeuroReachVR.Tasks
         [SerializeField] private GameObject balloonPrefab;
         [SerializeField] private int maxBalloons = 5;
         [SerializeField] private float spawnInterval = 2f;
-        [SerializeField] private Vector3 spawnAreaSize = new Vector3(2f, 2f, 2f);
         [SerializeField] private Vector3 spawnCenter = Vector3.zero;
         
         [Header("Difficulty")]
@@ -69,6 +68,12 @@ namespace NeuroReachVR.Tasks
         
         protected override void UpdateTask()
         {
+            if (inputHandler == null)
+            {
+                Debug.LogWarning("[BalloonPopTask] InputHandler not assigned!");
+                return;
+            }
+            
             if (!inputHandler.HasValidInput) return;
             
             CheckBalloonPops();
@@ -109,6 +114,11 @@ namespace NeuroReachVR.Tasks
             // Report failed attempt (timeout)
             feedback?.PlayError(balloon.transform.position);
             ReportAttempt(balloon.Age, false, 0f);
+            
+            // Return balloon to pool immediately to prevent pool exhaustion
+            // Note: Balloon.Update() will call Pop() after this, but that's harmless
+            // since ReturnToPool already deactivates the balloon
+            ReturnToPool(balloon);
         }
         
         private void SpawnBalloons()

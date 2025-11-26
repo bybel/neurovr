@@ -38,6 +38,34 @@ namespace NeuroReachVR.Tasks
         
         protected virtual void Start()
         {
+            // Auto-find InputHandler if not assigned
+            if (inputHandler == null)
+            {
+                inputHandler = FindFirstObjectByType<InputHandler>();
+                if (inputHandler == null)
+                    Debug.LogError($"[{GetType().Name}] InputHandler not found in scene!");
+                else
+                    Debug.Log($"[{GetType().Name}] Auto-found InputHandler");
+            }
+            
+            // Auto-find AdaptiveDifficultyController if not assigned
+            if (adaptiveController == null)
+            {
+                adaptiveController = FindFirstObjectByType<AdaptiveDifficultyController>();
+            }
+            
+            // Auto-find DataLogger if not assigned
+            if (dataLogger == null)
+            {
+                dataLogger = FindFirstObjectByType<DataLogger>();
+            }
+            
+            // Auto-find KinematicDataCollector if not assigned
+            if (kinematicCollector == null)
+            {
+                kinematicCollector = FindFirstObjectByType<KinematicDataCollector>();
+            }
+            
             if (autoStart)
                 StartTask();
         }

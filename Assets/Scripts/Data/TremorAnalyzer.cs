@@ -66,10 +66,20 @@ namespace NeuroReachVR.Data
             }
 
             float duration = samples[Mathf.Min(samples.Count - 1, fftSize - 1)].timestamp - samples[0].timestamp;
+            
+            // Guard against division by zero or very short durations
+            if (duration < 0.1f)
+                return 0f;
+                
             float frequency = (zeroCrossings / 2f) / duration; // Divide by 2 for full cycles
 
-            // Clamp to expected tremor range
-            return Mathf.Clamp(frequency, minTremorFrequency, maxTremorFrequency);
+            // If frequency is below the expected tremor range, report 0 (no tremor detected)
+            // Only clamp to max if frequency exceeds the expected range
+            // This prevents falsely reporting tremor when none is present
+            if (frequency < minTremorFrequency)
+                return 0f;
+            
+            return Mathf.Min(frequency, maxTremorFrequency);
         }
 
         // Removed duplicates - now using KinematicsCalculator.CalculateTremorAmplitude() and CalculateMovementEfficiency()

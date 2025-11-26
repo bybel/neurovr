@@ -185,6 +185,11 @@ namespace NeuroReachVR.Core
 
         private void ChangeDifficulty(DifficultyLevel newLevel)
         {
+            // Capture metrics before clearing for logging
+            float previousSuccessRate = metrics.SuccessRate;
+            float previousAccuracy = metrics.AverageAccuracy;
+            float previousAvgTime = metrics.AverageCompletionTime;
+
             currentLevel = newLevel;
             currentProfile = GetProfileForLevel(newLevel).Clone();
             ApplyProfile(currentProfile);
@@ -194,8 +199,8 @@ namespace NeuroReachVR.Core
             attemptsAtCurrentLevel = 0;
 
             Debug.Log($"[AdaptiveDifficulty] Changed to {newLevel} " +
-                     $"(Success: {metrics.SuccessRate:P0}, Accuracy: {metrics.AverageAccuracy:P0}, " +
-                     $"AvgTime: {metrics.AverageCompletionTime:F2}s)");
+                     $"(Success: {previousSuccessRate:P0}, Accuracy: {previousAccuracy:P0}, " +
+                     $"AvgTime: {previousAvgTime:F2}s)");
         }
 
         private DifficultyProfile GetProfileForLevel(DifficultyLevel level)

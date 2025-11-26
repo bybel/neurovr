@@ -48,6 +48,7 @@ namespace NeuroReachVR.UI
         
         private List<TextMeshProUGUI> allTextElements;
         private List<Button> allButtons;
+        private HashSet<Button> buttonsWithListeners;
         private float lastInteractionTime;
         private Coroutine timeoutCoroutine;
         
@@ -70,6 +71,13 @@ namespace NeuroReachVR.UI
         {
             allTextElements = new List<TextMeshProUGUI>(FindObjectsByType<TextMeshProUGUI>(FindObjectsSortMode.None));
             allButtons = new List<Button>(FindObjectsByType<Button>(FindObjectsSortMode.None));
+            
+            // Only initialize if null (preserve across refreshes to prevent duplicate listeners)
+            if (buttonsWithListeners == null)
+                buttonsWithListeners = new HashSet<Button>();
+            
+            // Clean up destroyed buttons from the tracking set
+            buttonsWithListeners.RemoveWhere(b => b == null);
         }
         
         public void SetFontSize(FontSize size)
@@ -200,15 +208,26 @@ namespace NeuroReachVR.UI
             {
                 if (button == null) continue;
                 
-                // Ensure button has visual feedback
-                var colors = button.colors;
-                colors.highlightedColor = Color.cyan;
-                colors.pressedColor = Color.blue;
-                colors.selectedColor = Color.green;
-                button.colors = colors;
-                
-                // Add hover effect listener
+                AddVisualFeedbackToButton(button);
+            }
+        }
+        
+        private void AddVisualFeedbackToButton(Button button)
+        {
+            if (button == null) return;
+            
+            // Ensure button has visual feedback colors (safe to apply multiple times)
+            var colors = button.colors;
+            colors.highlightedColor = Color.cyan;
+            colors.pressedColor = Color.blue;
+            colors.selectedColor = Color.green;
+            button.colors = colors;
+            
+            // Only add listener if not already added (prevents duplicate listeners)
+            if (!buttonsWithListeners.Contains(button))
+            {
                 button.onClick.AddListener(() => OnButtonClicked(button));
+                buttonsWithListeners.Add(button);
             }
         }
         
@@ -272,9 +291,43 @@ namespace NeuroReachVR.UI
             if (button != null && !allButtons.Contains(button))
             {
                 allButtons.Add(button);
-                ApplyButtonSizes();
-                AddVisualFeedback();
+                ApplyButtonSizeToButton(button);
+                AddVisualFeedbackToButton(button);
+                ApplyColorsToButton(button);
             }
+        }
+        
+        private void ApplyButtonSizeToButton(Button button)
+        {
+            if (button == null) return;
+            
+            RectTransform rect = button.GetComponent<RectTransform>();
+            if (rect != null)
+            {
+                Vector2 size = rect.sizeDelta;
+                if (size.x < minButtonSize)
+                    size.x = minButtonSize;
+                if (size.y < minButtonSize)
+                    size.y = minButtonSize;
+                rect.sizeDelta = size;
+            }
+            
+            var layoutElement = button.GetComponent<LayoutElement>();
+            if (layoutElement == null)
+                layoutElement = button.gameObject.AddComponent<LayoutElement>();
+            
+            layoutElement.minWidth = minButtonSize;
+            layoutElement.minHeight = minButtonSize;
+        }
+        
+        private void ApplyColorsToButton(Button button)
+        {
+            if (button == null) return;
+            
+            var colors = button.colors;
+            colors.normalColor = highContrastEnabled ? Color.white : colors.normalColor;
+            colors.highlightedColor = highContrastEnabled ? Color.yellow : colors.highlightedColor;
+            button.colors = colors;
         }
         
         public void RegisterText(TextMeshProUGUI text)

@@ -28,14 +28,21 @@ namespace NeuroReachVR.Tasks
         private int currentSegment;
         private float totalDeviation;
         private int deviationCount;
+        
+        // Track dynamically created materials to prevent memory leaks
+        private readonly List<Material> createdMaterials = new List<Material>();
 
-        public bool IsComplete => currentSegment >= targetPath.Count - 1;
+        public bool IsComplete => targetPath != null && targetPath.Count > 0 && currentSegment >= targetPath.Count - 1;
         public float Accuracy => CalculateAccuracy();
-        public float Progress => targetPath.Count > 0 ? currentSegment / (float)targetPath.Count : 0f;
+        public float Progress => (targetPath != null && targetPath.Count > 0) ? currentSegment / (float)targetPath.Count : 0f;
         public float AverageDeviation => deviationCount > 0 ? totalDeviation / deviationCount : 0f;
 
         private void Awake()
         {
+            // Initialize lists first
+            targetPath = new List<Vector3>();
+            tracedPath = new List<Vector3>();
+            
             if (targetLineRenderer == null)
             {
                 targetLineRenderer = gameObject.AddComponent<LineRenderer>();
@@ -49,15 +56,50 @@ namespace NeuroReachVR.Tasks
                 tracedLineRenderer = tracedObj.AddComponent<LineRenderer>();
                 ConfigureLineRenderer(tracedLineRenderer, correctColor);
             }
+        }
 
-            tracedPath = new List<Vector3>();
+        private void OnDestroy()
+        {
+            // Clean up dynamically created materials to prevent memory leaks
+            foreach (Material material in createdMaterials)
+            {
+                if (material != null)
+                {
+                    Destroy(material);
+                }
+            }
+            createdMaterials.Clear();
         }
 
         private void ConfigureLineRenderer(LineRenderer renderer, Color color)
         {
+            if (renderer == null) return;
+            
             renderer.startWidth = pathWidth;
             renderer.endWidth = pathWidth;
-            renderer.material = new Material(Shader.Find("Sprites/Default"));
+            
+            // Create material with fallback shaders (Shader.Find can return null in builds)
+            Shader shader = Shader.Find("Sprites/Default");
+            if (shader == null)
+                shader = Shader.Find("UI/Default");
+            if (shader == null)
+                shader = Shader.Find("Unlit/Color");
+            if (shader == null)
+                shader = Shader.Find("Standard");
+            
+            if (shader != null)
+            {
+                Material material = new Material(shader);
+                material.color = color;
+                createdMaterials.Add(material);
+                renderer.material = material;
+            }
+            else
+            {
+                Debug.LogWarning("[TraceablePath] Could not find any shader for LineRenderer. Using default material.");
+                // Use renderer's existing material or Unity's default
+            }
+            
             renderer.startColor = color;
             renderer.endColor = color;
             renderer.useWorldSpace = true;
@@ -72,7 +114,12 @@ namespace NeuroReachVR.Tasks
             }
 
             targetPath = new List<Vector3>(path);
-            tracedPath.Clear();
+            
+            // Ensure tracedPath is initialized (might not be if Awake hasn't run yet)
+            if (tracedPath == null)
+                tracedPath = new List<Vector3>();
+            else
+                tracedPath.Clear();
             currentSegment = 0;
             totalDeviation = 0f;
             deviationCount = 0;
@@ -130,21 +177,47 @@ namespace NeuroReachVR.Tasks
 
             tracedLineRenderer.positionCount = tracedPath.Count;
 
-            // Create gradient for color feedback
-            Gradient gradient = new Gradient();
-            GradientColorKey[] colorKeys = new GradientColorKey[tracedPath.Count];
-            GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
-
+            // Set positions for all traced points
             for (int i = 0; i < tracedPath.Count; i++)
             {
                 tracedLineRenderer.SetPosition(i, tracedPath[i]);
+            }
 
-                // Determine color based on deviation
-                float deviation = i < targetPath.Count ?
-                    Vector3.Distance(tracedPath[i], targetPath[i]) : float.MaxValue;
+            // Create gradient for color feedback
+            // Unity's Gradient supports a maximum of 8 color keys, so we sample at regular intervals
+            const int maxGradientKeys = 8;
+            Gradient gradient = new Gradient();
+            
+            int keyCount = Mathf.Min(tracedPath.Count, maxGradientKeys);
+            GradientColorKey[] colorKeys = new GradientColorKey[keyCount];
+            GradientAlphaKey[] alphaKeys = new GradientAlphaKey[2];
+
+            for (int keyIndex = 0; keyIndex < keyCount; keyIndex++)
+            {
+                // Calculate the sample index in the traced path
+                // For keyCount keys, we sample at evenly spaced intervals
+                int sampleIndex;
+                float gradientTime;
+                
+                if (keyCount == 1)
+                {
+                    sampleIndex = 0;
+                    gradientTime = 0f;
+                }
+                else
+                {
+                    // Map key index to path index, ensuring we include first and last points
+                    float t = keyIndex / (float)(keyCount - 1);
+                    sampleIndex = Mathf.RoundToInt(t * (tracedPath.Count - 1));
+                    gradientTime = t;
+                }
+
+                // Determine color based on deviation at this sample point
+                float deviation = sampleIndex < targetPath.Count ?
+                    Vector3.Distance(tracedPath[sampleIndex], targetPath[sampleIndex]) : float.MaxValue;
 
                 Color pointColor = deviation < pathWidth ? correctColor : errorColor;
-                colorKeys[i] = new GradientColorKey(pointColor, i / (float)tracedPath.Count);
+                colorKeys[keyIndex] = new GradientColorKey(pointColor, gradientTime);
             }
 
             alphaKeys[0] = new GradientAlphaKey(1f, 0f);

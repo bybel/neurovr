@@ -132,6 +132,9 @@ namespace NeuroReachVR.Data
             if (!ValidateData(accuracy, errorCount))
                 return;
 
+            // Ensure sessionID is valid - auto-generate if LogSessionStart wasn't called
+            EnsureSessionID();
+
             attemptNumber++;
             currentTaskType = task.GetType().Name;
 
@@ -234,6 +237,31 @@ namespace NeuroReachVR.Data
         public void SetDifficulty(DifficultyLevel difficulty)
         {
             currentDifficulty = difficulty;
+        }
+
+        /// <summary>
+        /// Ensures sessionID is valid. Auto-generates one if not set.
+        /// Called automatically if LogTaskAttempt is invoked before LogSessionStart.
+        /// </summary>
+        private void EnsureSessionID()
+        {
+            if (string.IsNullOrEmpty(sessionID))
+            {
+                sessionID = Guid.NewGuid().ToString();
+                Debug.LogWarning($"[DataLogger] LogTaskAttempt called without LogSessionStart. " +
+                    $"Auto-generated sessionID: {sessionID}. Consider calling LogSessionStart() first.");
+                
+                // Initialize kinematic file for the auto-generated session
+                InitializeKinematicFile();
+            }
+        }
+
+        /// <summary>
+        /// Checks if a valid session is active.
+        /// </summary>
+        public bool HasActiveSession()
+        {
+            return !string.IsNullOrEmpty(sessionID);
         }
 
         private string FormatCSVRow(params string[] values)

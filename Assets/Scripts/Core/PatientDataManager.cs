@@ -110,7 +110,6 @@ namespace NeuroReachVR.Core
             
             var session = patientSessions[patientID];
             session.lastSessionDate = DateTime.Now;
-            session.totalSessions++;
             session.DeserializeDates();
             session.SerializeDates();
             
@@ -259,8 +258,12 @@ namespace NeuroReachVR.Core
         public string firstSessionDateString;
         public string lastSessionDateString;
         public int sessionCount;
-        public int totalSessions;
         public List<TaskSessionData> taskSessions = new List<TaskSessionData>();
+        
+        /// <summary>
+        /// Gets the number of completed task sessions (derived from taskSessions list)
+        /// </summary>
+        public int CompletedTaskCount => taskSessions?.Count ?? 0;
         
         [System.NonSerialized]
         public DateTime firstSessionDate;

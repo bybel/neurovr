@@ -29,17 +29,13 @@ namespace NeuroReachVR.Tasks
         public float AngularVelocity => currentAngularVelocity;
         public float RadialAccuracy => radialAccuracy;
         
-        protected override void Start()
-        {
-            base.Start();
-            pathType = PathType.Circle; // Override to use spiral
-        }
-        
         protected override void UpdateTask()
         {
             base.UpdateTask();
             
-            if (isTracing && inputHandler.IsStylusPressed)
+            // Support all input modes: Stylus press, Mouse click, or Hand pinch
+            bool isPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching;
+            if (isTracing && isPressed)
                 TrackAngularVelocity();
         }
         
@@ -115,7 +111,7 @@ namespace NeuroReachVR.Tasks
             
             float combinedAccuracy = (currentPath.Accuracy + radialAccuracy) * 0.5f * velocityScore;
             bool success = combinedAccuracy >= minAccuracy;
-            float completionTime = elapsedTime - (currentPath != null ? currentPath.Progress * sessionDuration : 0f);
+            float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
             
             if (success)
             {

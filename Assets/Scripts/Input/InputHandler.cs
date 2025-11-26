@@ -47,18 +47,17 @@ namespace NeuroReachVR.Input
         {
             get
             {
-                if (currentMode == InputMode.Simulator)
-                {
-                    var sim = activeInput as SimulatorInput;
-                    if (sim != null) return sim.IsPinching;
-                }
+                // Check activeInput type directly (works regardless of how input was selected)
+                if (activeInput is SimulatorInput sim)
+                    return sim.IsPinching;
+
                 if (currentMode != InputMode.Hand) return false;
 
-                var handSource = activeInput as HandTrackingXRHands;
-                if (handSource != null) return handSource.IsPinching;
+                if (activeInput is HandTrackingXRHands handSource)
+                    return handSource.IsPinching;
 
-                var legacyHand = activeInput as HandTrackingManager;
-                if (legacyHand != null) return legacyHand.IsPinching;
+                if (activeInput is HandTrackingManager legacyHand)
+                    return legacyHand.IsPinching;
 
                 return false;
             }
@@ -68,18 +67,17 @@ namespace NeuroReachVR.Input
         {
             get
             {
-                if (currentMode == InputMode.Simulator)
-                {
-                    var sim = activeInput as SimulatorInput;
-                    if (sim != null) return sim.PinchStrength;
-                }
+                // Check activeInput type directly (works regardless of how input was selected)
+                if (activeInput is SimulatorInput sim)
+                    return sim.PinchStrength;
+
                 if (currentMode != InputMode.Hand) return 0f;
 
-                var handSource = activeInput as HandTrackingXRHands;
-                if (handSource != null) return handSource.PinchStrength;
+                if (activeInput is HandTrackingXRHands handSource)
+                    return handSource.PinchStrength;
 
-                var legacyHand = activeInput as HandTrackingManager;
-                if (legacyHand != null) return legacyHand.PinchStrength;
+                if (activeInput is HandTrackingManager legacyHand)
+                    return legacyHand.PinchStrength;
 
                 return 0f;
             }
@@ -92,11 +90,10 @@ namespace NeuroReachVR.Input
         {
             get
             {
-                if (currentMode == InputMode.Simulator)
-                {
-                    var sim = activeInput as SimulatorInput;
-                    if (sim != null) return sim.IsPressed;
-                }
+                // Check activeInput type directly (works regardless of how input was selected)
+                if (activeInput is SimulatorInput sim)
+                    return sim.IsPressed;
+
                 return currentMode == InputMode.Stylus && stylus?.IsPressed == true;
             }
         }

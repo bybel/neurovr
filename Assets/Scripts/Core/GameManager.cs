@@ -39,6 +39,11 @@ namespace NeuroReachVR.Core
         private GameState currentState;
         private PatientDataManager patientDataManager;
         
+        /// <summary>
+        /// Event fired when the game state changes (e.g., paused, resumed)
+        /// </summary>
+        public event System.Action<GameState> OnGameStateChanged;
+        
         public GameState CurrentState => currentState;
         public BaseTask CurrentTask => currentTask;
         
@@ -144,29 +149,45 @@ namespace NeuroReachVR.Core
             }
             
             task.StartTask();
+            OnGameStateChanged?.Invoke(currentState);
         }
         
         public void EndCurrentTask()
         {
             if (currentTask != null)
             {
+                // Capture task data BEFORE ending (task will be null after EndTask)
+                string taskType = currentTask.GetType().Name;
+                int finalScore = currentTask.Score;
+                float finalDuration = currentTask.ElapsedTime;
+                
                 // Record session completion
-                if (patientDataManager != null && currentTask != null)
+                if (patientDataManager != null)
                 {
-                    string taskType = currentTask.GetType().Name;
                     patientDataManager.RecordSessionCompletion(
                         patientDataManager.GetCurrentPatientID(),
                         taskType,
-                        currentTask.ElapsedTime,
-                        currentTask.Score
+                        finalDuration,
+                        finalScore
                     );
                 }
                 
                 currentTask.EndTask();
                 currentTask = null;
+                
+                // Notify HUDManager immediately with captured task data
+                if (hudManager != null)
+                {
+                    hudManager.OnTaskCompleted(taskType, finalScore, finalDuration);
+                }
+                else
+                {
+                    Debug.LogWarning("[GameManager] HUDManager not assigned - cannot show task completion UI");
+                }
             }
             
             currentState = GameState.TaskComplete;
+            OnGameStateChanged?.Invoke(currentState);
         }
         
         public void PauseCurrentTask()
@@ -175,6 +196,8 @@ namespace NeuroReachVR.Core
             {
                 currentTask.PauseTask();
                 currentState = GameState.Paused;
+                OnGameStateChanged?.Invoke(currentState);
+                Debug.Log("[GameManager] Task paused");
             }
         }
         
@@ -184,6 +207,8 @@ namespace NeuroReachVR.Core
             {
                 currentTask.ResumeTask();
                 currentState = GameState.TaskActive;
+                OnGameStateChanged?.Invoke(currentState);
+                Debug.Log("[GameManager] Task resumed");
             }
         }
         
@@ -196,6 +221,31 @@ namespace NeuroReachVR.Core
                 if (dataLogger != null)
                     dataLogger.SetPatientID(patientID);
             }
+        }
+        
+        /// <summary>
+        /// Check if a valid patient is currently logged in
+        /// </summary>
+        /// <returns>True if a non-empty patient ID is set</returns>
+        public bool IsPatientLoggedIn()
+        {
+            if (patientDataManager == null)
+                return false;
+            
+            string patientID = patientDataManager.GetCurrentPatientID();
+            return !string.IsNullOrEmpty(patientID);
+        }
+        
+        /// <summary>
+        /// Get the currently logged in patient ID
+        /// </summary>
+        /// <returns>Patient ID or empty string if not logged in</returns>
+        public string GetCurrentPatientID()
+        {
+            if (patientDataManager == null)
+                return string.Empty;
+            
+            return patientDataManager.GetCurrentPatientID();
         }
         
         public void SetDifficulty(DifficultyLevel level)

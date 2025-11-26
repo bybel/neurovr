@@ -111,10 +111,16 @@ namespace NeuroReachVR.Input
             if (device == null) return false;
             
             var description = device.description;
-            return description.manufacturer.Contains(LOGITECH_MANUFACTURER) && 
-                   (description.product.Contains(MX_INK_PRODUCT) || 
-                    description.product.Contains("Stylus") ||
-                    description.deviceClass == "Stylus");
+            
+            // Guard against null description fields - these can be null for some devices
+            string manufacturer = description.manufacturer ?? string.Empty;
+            string product = description.product ?? string.Empty;
+            string deviceClass = description.deviceClass ?? string.Empty;
+            
+            return manufacturer.Contains(LOGITECH_MANUFACTURER) && 
+                   (product.Contains(MX_INK_PRODUCT) || 
+                    product.Contains("Stylus") ||
+                    deviceClass == "Stylus");
         }
         
         private bool IsLogitechStylusDevice(UnityEngine.XR.InputDevice device)

@@ -34,6 +34,11 @@ namespace NeuroReachVR.UI
         private Vector3 pointerEnd;
         private GameObject currentHoveredObject;
         
+        // Cached lists to avoid per-frame allocations (GC pressure optimization)
+        private readonly System.Collections.Generic.List<RaycastResult> cachedRaycastResults = new System.Collections.Generic.List<RaycastResult>();
+        private readonly System.Collections.Generic.List<UnityEngine.XR.InputDevice> cachedInputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
+        private PointerEventData cachedPointerEventData;
+        
         private void Awake()
         {
             mainCamera = Camera.main;
@@ -67,6 +72,9 @@ namespace NeuroReachVR.UI
                 if (graphicRaycaster == null)
                     graphicRaycaster = worldCanvas.gameObject.AddComponent<GraphicRaycaster>();
             }
+            
+            // Initialize cached PointerEventData to avoid per-frame allocation
+            cachedPointerEventData = new PointerEventData(eventSystem);
             
             SetupPointerVisual();
         }
@@ -130,22 +138,23 @@ namespace NeuroReachVR.UI
             isPointerActive = true;
             pointerStart = rayOrigin;
             
-            // Raycast against UI
-            PointerEventData pointerData = new PointerEventData(eventSystem);
+            // Raycast against UI - reuse cached PointerEventData to avoid GC allocation
+            cachedPointerEventData.Reset();
 #if UNITY_EDITOR
             if (Mouse.current != null)
             {
-                pointerData.position = Mouse.current.position.ReadValue();
+                cachedPointerEventData.position = Mouse.current.position.ReadValue();
             }
             else
             {
-                pointerData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
+                cachedPointerEventData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
             }
 #else
-            pointerData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
+            cachedPointerEventData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
 #endif
 
-            var results = new System.Collections.Generic.List<RaycastResult>();
+            // Reuse cached list - clear instead of allocating new (GC optimization)
+            cachedRaycastResults.Clear();
             
             // Find all active raycasters to ensure we hit any active UI
             // Optimize: Cache raycasters and refresh every 1s
@@ -161,7 +170,7 @@ namespace NeuroReachVR.UI
                 {
                     if (caster != null && caster.gameObject.activeInHierarchy) // Check null/active in case it was destroyed/disabled since cache
                     {
-                        caster.Raycast(pointerData, results);
+                        caster.Raycast(cachedPointerEventData, cachedRaycastResults);
                     }
                 }
             }
@@ -185,9 +194,9 @@ namespace NeuroReachVR.UI
             }
             
             // Check UI raycast results
-            if (results.Count > 0)
+            if (cachedRaycastResults.Count > 0)
             {
-                foreach (var result in results)
+                foreach (var result in cachedRaycastResults)
                 {
                     Button button = result.gameObject.GetComponent<Button>();
                     if (button != null)
@@ -286,12 +295,13 @@ namespace NeuroReachVR.UI
         {
             position = Vector3.zero;
             
-            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, inputDevices);
+            // Reuse cached list to avoid GC allocation
+            cachedInputDevices.Clear();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, cachedInputDevices);
             
-            if (inputDevices.Count > 0)
+            if (cachedInputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
+                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
                     return true;
             }
             
@@ -302,12 +312,13 @@ namespace NeuroReachVR.UI
         {
             rotation = Quaternion.identity;
             
-            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, inputDevices);
+            // Reuse cached list to avoid GC allocation
+            cachedInputDevices.Clear();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, cachedInputDevices);
             
-            if (inputDevices.Count > 0)
+            if (cachedInputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
+                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
                     return true;
             }
             
@@ -318,12 +329,13 @@ namespace NeuroReachVR.UI
         {
             position = Vector3.zero;
             
-            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, inputDevices);
+            // Reuse cached list to avoid GC allocation
+            cachedInputDevices.Clear();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, cachedInputDevices);
             
-            if (inputDevices.Count > 0)
+            if (cachedInputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
+                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
                     return true;
             }
             
@@ -334,12 +346,13 @@ namespace NeuroReachVR.UI
         {
             rotation = Quaternion.identity;
             
-            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, inputDevices);
+            // Reuse cached list to avoid GC allocation
+            cachedInputDevices.Clear();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, cachedInputDevices);
             
-            if (inputDevices.Count > 0)
+            if (cachedInputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
+                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
                     return true;
             }
             
@@ -354,11 +367,11 @@ namespace NeuroReachVR.UI
                 return true;
             }
 #endif
-            // Check for trigger/select button press
-            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
-            UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, inputDevices);
+            // Check for trigger/select button press - reuse cached list to avoid GC allocation
+            cachedInputDevices.Clear();
+            UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, cachedInputDevices);
             
-            foreach (var device in inputDevices)
+            foreach (var device in cachedInputDevices)
             {
                 if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool triggerPressed) && triggerPressed)
                     return true;
@@ -404,8 +417,8 @@ namespace NeuroReachVR.UI
             Button button = obj.GetComponent<Button>();
             if (button != null && button.interactable)
             {
-                // Trigger hover state
-                ExecuteEvents.Execute(obj, new PointerEventData(eventSystem), ExecuteEvents.pointerEnterHandler);
+                // Trigger hover state - reuse cached PointerEventData to avoid GC allocation
+                ExecuteEvents.Execute(obj, cachedPointerEventData, ExecuteEvents.pointerEnterHandler);
             }
         }
         
@@ -414,12 +427,13 @@ namespace NeuroReachVR.UI
             Button button = obj.GetComponent<Button>();
             if (button != null)
             {
-                ExecuteEvents.Execute(obj, new PointerEventData(eventSystem), ExecuteEvents.pointerExitHandler);
+                // Reuse cached PointerEventData to avoid GC allocation
+                ExecuteEvents.Execute(obj, cachedPointerEventData, ExecuteEvents.pointerExitHandler);
             }
         }
         
         private float lastClickTime;
-        private const float CLICK_COOLDOWN = 0.5f;
+        private const float CLICK_COOLDOWN = 0.15f; // 150ms - responsive for VR while preventing accidental double-clicks
 
         private void OnPointerClick(GameObject obj)
         {
@@ -432,8 +446,8 @@ namespace NeuroReachVR.UI
                 Debug.Log($"[VRUIInputManager] VRPointer clicked on: {button.name} (hit: {obj.name})");
                 // button.onClick.Invoke(); // Removed to prevent double-invocation
                 
-                // Also trigger pointer click event
-                ExecuteEvents.Execute(button.gameObject, new PointerEventData(eventSystem), ExecuteEvents.pointerClickHandler);
+                // Trigger pointer click event - reuse cached PointerEventData to avoid GC allocation
+                ExecuteEvents.Execute(button.gameObject, cachedPointerEventData, ExecuteEvents.pointerClickHandler);
             }
         }
     }

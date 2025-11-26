@@ -11,14 +11,22 @@ namespace NeuroReachVR.Input
         [SerializeField] private Camera mainCamera;
         [SerializeField] private float depth = 1.0f;
 
-        public bool IsAvailable => true;
-        public bool IsTracking => true;
+        /// <summary>
+        /// Returns true only if a mouse device is currently available.
+        /// Will be false on VR devices without a mouse (like Meta Quest).
+        /// </summary>
+        public bool IsAvailable => Mouse.current != null;
+        
+        /// <summary>
+        /// Returns true only if both mouse and camera are available for tracking.
+        /// </summary>
+        public bool IsTracking => Mouse.current != null && mainCamera != null;
 
         public Vector3 Position
         {
             get
             {
-                if (mainCamera == null)
+                if (mainCamera == null || Mouse.current == null)
                 {
                     return Vector3.zero;
                 }
@@ -29,11 +37,11 @@ namespace NeuroReachVR.Input
         }
 
         public Quaternion Rotation => Quaternion.identity;
-        public float Confidence => 1.0f;
+        public float Confidence => Mouse.current != null ? 1.0f : 0.0f;
 
-        public bool IsPinching => Mouse.current.leftButton.isPressed;
-        public float PinchStrength => Mouse.current.leftButton.isPressed ? 1.0f : 0.0f;
-        public bool IsPressed => Mouse.current.leftButton.isPressed;
+        public bool IsPinching => Mouse.current?.leftButton.isPressed ?? false;
+        public float PinchStrength => Mouse.current?.leftButton.isPressed == true ? 1.0f : 0.0f;
+        public bool IsPressed => Mouse.current?.leftButton.isPressed ?? false;
 
         void Awake()
         {
