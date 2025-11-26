@@ -70,6 +70,23 @@ public class HUDManager : MenuManager
 
     private void Start()
     {
+        CleanupDuplicates(); // Remove accidental duplicates before initialization
+
+        // Debug Aid: Rename buttons to match their logic so you can verify assignments in Hierarchy
+        if (balloonTaskButton) balloonTaskButton.name = "Logic_BalloonBtn";
+        if (pathTaskButton) pathTaskButton.name = "Logic_PathBtn";
+        if (spiralTaskButton) spiralTaskButton.name = "Logic_SpiralBtn";
+        if (taskBackButton) taskBackButton.name = "Logic_TaskBackBtn";
+        if (selectTaskButton) selectTaskButton.name = "Logic_SelectTaskBtn";
+        if (startTrialButton) startTrialButton.name = "Logic_StartTrialBtn";
+
+        // Failsafe: Explicitly hide all menus to prevent overlap if initialization glitches
+        if (mainMenu) mainMenu.SetActive(false);
+        if (patientLoginMenu) patientLoginMenu.SetActive(false);
+        if (selectTaskMenu) selectTaskMenu.SetActive(false);
+        if (difficultyMenu) difficultyMenu.SetActive(false);
+        if (startTrialMenu) startTrialMenu.SetActive(false);
+
         AssignCamerasToCanvases();
         InitializeButtonListeners();
         score = 0;
@@ -84,28 +101,69 @@ public class HUDManager : MenuManager
         ShowMenu("main");
     }
 
+    private void CleanupDuplicates()
+    {
+        Debug.Log("[HUDManager] Scanning for duplicate UI elements...");
+        System.Collections.Generic.HashSet<GameObject> validObjects = new System.Collections.Generic.HashSet<GameObject>();
+
+        void AddValid(Component c) { if (c != null) validObjects.Add(c.gameObject); }
+        void AddValidGO(GameObject g) { if (g != null) validObjects.Add(g); }
+
+        // Register Valid Menus
+        AddValidGO(mainMenu); AddValidGO(patientLoginMenu); AddValidGO(selectTaskMenu);
+        AddValidGO(difficultyMenu); AddValidGO(startTrialMenu);
+
+        // Register Valid Buttons
+        AddValid(selectTaskButton); AddValid(patientLoginButton); AddValid(quitButton);
+        AddValid(loginButton); AddValid(loginBackButton);
+        AddValid(balloonTaskButton); AddValid(pathTaskButton); AddValid(spiralTaskButton); AddValid(taskBackButton);
+        AddValid(easyButton); AddValid(mediumButton); AddValid(hardButton);
+        AddValid(startTrialButton);
+
+        // Register Valid Inputs
+        AddValid(patientIDInput);
+
+        // Scan scene for impostors
+        Button[] allButtons = FindObjectsOfType<Button>(true);
+        int disabledCount = 0;
+
+        foreach (var btn in allButtons)
+        {
+            // If this button is NOT in our valid list
+            if (!validObjects.Contains(btn.gameObject))
+            {
+                // Check if it mimics a valid object (same name)
+                foreach (var valid in validObjects)
+                {
+                    if (btn.name == valid.name)
+                    {
+                        Debug.LogWarning($"[HUDManager] Found Duplicate/Ghost Button: '{btn.name}'. Disabling it.");
+                        btn.gameObject.SetActive(false);
+                        btn.name += "_DISABLED_DUPLICATE";
+                        disabledCount++;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     private void AssignCamerasToCanvases()
     {
-        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        // Use legacy API for maximum stability/compatibility
+        Canvas[] canvases = FindObjectsOfType<Canvas>(true);
         Camera mainCam = Camera.main;
         if (mainCam == null) mainCam = FindFirstObjectByType<Camera>();
 
         if (mainCam != null)
         {
-            int fixedCount = 0;
             foreach (var canvas in canvases)
             {
                 if (canvas.renderMode == RenderMode.WorldSpace && canvas.worldCamera == null)
                 {
                     canvas.worldCamera = mainCam;
-                    fixedCount++;
                 }
             }
-            Debug.Log($"[HUDManager] Auto-assigned {mainCam.name} to {fixedCount} World Space canvases.");
-        }
-        else
-        {
-             Debug.LogWarning("[HUDManager] No Main Camera found to assign to World Space canvases!");
         }
     }
 
@@ -116,12 +174,49 @@ public class HUDManager : MenuManager
         {
             if ((spiralTaskButton != null && selectTaskMenu == spiralTaskButton.gameObject) ||
                 (balloonTaskButton != null && selectTaskMenu == balloonTaskButton.gameObject) ||
-                (pathTaskButton != null && selectTaskMenu == pathTaskButton.gameObject))
+                (pathTaskButton != null && selectTaskMenu == pathTaskButton.gameObject) ||
+                (startTrialButton != null && selectTaskMenu == startTrialButton.gameObject))
             {
                 Debug.LogWarning("[HUDManager] selectTaskMenu was assigned to a Button! Auto-fixing to Parent Panel.");
                 if (selectTaskMenu.transform.parent != null)
                     selectTaskMenu = selectTaskMenu.transform.parent.gameObject;
             }
+        }
+
+        // Force Hierarchy: Reparent buttons to their menus to ensure visibility toggling works
+        // This fixes "Buttons always visible" or "Overlapping" issues due to loose hierarchy
+        if (selectTaskMenu != null)
+        {
+            if (spiralTaskButton) spiralTaskButton.transform.SetParent(selectTaskMenu.transform, true);
+            if (balloonTaskButton) balloonTaskButton.transform.SetParent(selectTaskMenu.transform, true);
+            if (pathTaskButton) pathTaskButton.transform.SetParent(selectTaskMenu.transform, true);
+            if (taskBackButton) taskBackButton.transform.SetParent(selectTaskMenu.transform, true);
+        }
+
+        if (patientLoginMenu != null)
+        {
+            if (loginBackButton) loginBackButton.transform.SetParent(patientLoginMenu.transform, true);
+            if (loginButton) loginButton.transform.SetParent(patientLoginMenu.transform, true);
+            if (patientIDInput) patientIDInput.transform.SetParent(patientLoginMenu.transform, true);
+        }
+
+        if (mainMenu != null)
+        {
+            if (selectTaskButton) selectTaskButton.transform.SetParent(mainMenu.transform, true);
+            if (patientLoginButton) patientLoginButton.transform.SetParent(mainMenu.transform, true);
+            if (quitButton) quitButton.transform.SetParent(mainMenu.transform, true);
+        }
+
+        if (difficultyMenu != null)
+        {
+            if (easyButton) easyButton.transform.SetParent(difficultyMenu.transform, true);
+            if (mediumButton) mediumButton.transform.SetParent(difficultyMenu.transform, true);
+            if (hardButton) hardButton.transform.SetParent(difficultyMenu.transform, true);
+        }
+
+        if (startTrialMenu != null)
+        {
+            if (startTrialButton) startTrialButton.transform.SetParent(startTrialMenu.transform, true);
         }
 
         Debug.Log("[HUDManager] Registering menus...");
@@ -259,7 +354,8 @@ public class HUDManager : MenuManager
         // Periodically ensure active canvases have cameras (every 2 seconds)
         if (Time.time >= nextCameraCheckTime)
         {
-            Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None); // Active only
+            // Use legacy API for maximum stability
+            Canvas[] canvases = FindObjectsOfType<Canvas>(false); // Active only
             Camera mainCam = Camera.main;
             if (mainCam == null) mainCam = FindFirstObjectByType<Camera>();
 
@@ -274,6 +370,19 @@ public class HUDManager : MenuManager
                 }
             }
             nextCameraCheckTime = Time.time + 2.0f;
+        }
+
+        // Check for Task Quit Input (Simulator/Editor)
+        if (gameManager != null && gameManager.CurrentTask != null)
+        {
+#if UNITY_EDITOR
+            if (UnityEngine.InputSystem.Keyboard.current != null && UnityEngine.InputSystem.Keyboard.current.escapeKey.wasPressedThisFrame)
+            {
+                Debug.Log("[HUDManager] Escape pressed. Ending task.");
+                gameManager.EndCurrentTask();
+                ShowMainMenu();
+            }
+#endif
         }
 
         // Update score and progress from current task

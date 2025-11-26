@@ -426,14 +426,14 @@ namespace NeuroReachVR.UI
             if (Time.time - lastClickTime < CLICK_COOLDOWN) return;
             lastClickTime = Time.time;
 
-            Button button = obj.GetComponent<Button>();
+            Button button = obj.GetComponentInParent<Button>();
             if (button != null && button.interactable)
             {
-                Debug.Log($"[VRUIInputManager] VRPointer clicked on: {obj.name}");
+                Debug.Log($"[VRUIInputManager] VRPointer clicked on: {button.name} (hit: {obj.name})");
                 // button.onClick.Invoke(); // Removed to prevent double-invocation
                 
                 // Also trigger pointer click event
-                ExecuteEvents.Execute(obj, new PointerEventData(eventSystem), ExecuteEvents.pointerClickHandler);
+                ExecuteEvents.Execute(button.gameObject, new PointerEventData(eventSystem), ExecuteEvents.pointerClickHandler);
             }
         }
     }
