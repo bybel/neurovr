@@ -46,6 +46,26 @@ namespace NeuroReachVR.Core
         {
             // Register with ServiceLocator so HUDManager can find it
             ServiceLocator.Register(this);
+
+#if UNITY_EDITOR
+            if (inputHandler != null)
+            {
+                var simulator = FindFirstObjectByType<SimulatorInput>();
+                if (simulator == null)
+                {
+                    GameObject simObj = new GameObject("SimulatorInput");
+                    simulator = simObj.AddComponent<SimulatorInput>();
+                }
+
+                // Assign the simulator to the input handler
+                var so = new UnityEditor.SerializedObject(inputHandler);
+                var sp = so.FindProperty("simulatorInput");
+                sp.objectReferenceValue = simulator;
+                so.ApplyModifiedProperties();
+
+                inputHandler.SetInputMode(InputMode.Simulator);
+            }
+#endif
             
             patientDataManager = FindFirstObjectByType<PatientDataManager>();
             if (patientDataManager == null)

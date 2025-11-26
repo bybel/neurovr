@@ -58,6 +58,7 @@ public class HUDManager : MenuManager
 
     protected override void Awake()
     {
+        useAnimations = false; // Disable animations to ensure visibility and prevent fade issues
         base.Awake();
 
         // Get GameManager via ServiceLocator
@@ -69,6 +70,7 @@ public class HUDManager : MenuManager
 
     private void Start()
     {
+        AssignCamerasToCanvases();
         InitializeButtonListeners();
         score = 0;
         UpdateScoreText();
@@ -82,8 +84,46 @@ public class HUDManager : MenuManager
         ShowMenu("main");
     }
 
+    private void AssignCamerasToCanvases()
+    {
+        Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+        Camera mainCam = Camera.main;
+        if (mainCam == null) mainCam = FindFirstObjectByType<Camera>();
+
+        if (mainCam != null)
+        {
+            int fixedCount = 0;
+            foreach (var canvas in canvases)
+            {
+                if (canvas.renderMode == RenderMode.WorldSpace && canvas.worldCamera == null)
+                {
+                    canvas.worldCamera = mainCam;
+                    fixedCount++;
+                }
+            }
+            Debug.Log($"[HUDManager] Auto-assigned {mainCam.name} to {fixedCount} World Space canvases.");
+        }
+        else
+        {
+             Debug.LogWarning("[HUDManager] No Main Camera found to assign to World Space canvases!");
+        }
+    }
+
     protected override void InitializeMenus()
     {
+        // Smart Fix: Check for Inspector misassignments (Menu assigned to a Button instead of Panel)
+        if (selectTaskMenu != null)
+        {
+            if ((spiralTaskButton != null && selectTaskMenu == spiralTaskButton.gameObject) ||
+                (balloonTaskButton != null && selectTaskMenu == balloonTaskButton.gameObject) ||
+                (pathTaskButton != null && selectTaskMenu == pathTaskButton.gameObject))
+            {
+                Debug.LogWarning("[HUDManager] selectTaskMenu was assigned to a Button! Auto-fixing to Parent Panel.");
+                if (selectTaskMenu.transform.parent != null)
+                    selectTaskMenu = selectTaskMenu.transform.parent.gameObject;
+            }
+        }
+
         Debug.Log("[HUDManager] Registering menus...");
         
         // Register all menus
@@ -202,12 +242,40 @@ public class HUDManager : MenuManager
         // Start Trial
         if (startTrialButton != null)
             startTrialButton.onClick.AddListener(OnStartTrialClicked);
+
+        // Fix: Force enable task selection buttons in case they are disabled in scene
+        if (balloonTaskButton) balloonTaskButton.gameObject.SetActive(true);
+        if (pathTaskButton) pathTaskButton.gameObject.SetActive(true);
+        if (spiralTaskButton) spiralTaskButton.gameObject.SetActive(true);
+        if (taskBackButton) taskBackButton.gameObject.SetActive(true);
         
         Debug.Log("[HUDManager] Button listeners initialized.");
     }
 
+    private float nextCameraCheckTime;
+
     private void Update()
     {
+        // Periodically ensure active canvases have cameras (every 2 seconds)
+        if (Time.time >= nextCameraCheckTime)
+        {
+            Canvas[] canvases = FindObjectsByType<Canvas>(FindObjectsSortMode.None); // Active only
+            Camera mainCam = Camera.main;
+            if (mainCam == null) mainCam = FindFirstObjectByType<Camera>();
+
+            if (mainCam != null)
+            {
+                foreach (var canvas in canvases)
+                {
+                    if (canvas.renderMode == RenderMode.WorldSpace && canvas.worldCamera == null)
+                    {
+                        canvas.worldCamera = mainCam;
+                    }
+                }
+            }
+            nextCameraCheckTime = Time.time + 2.0f;
+        }
+
         // Update score and progress from current task
         if (gameManager?.CurrentTask != null)
         {

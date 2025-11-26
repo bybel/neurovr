@@ -17,6 +17,9 @@ namespace NeuroReachVR.Input
         [SerializeField] private HandTrackingManager leftHandLegacy;
         [SerializeField] private HandTrackingManager rightHandLegacy;
 
+        [Header("Simulator Input")]
+        [SerializeField] private SimulatorInput simulatorInput;
+
         [Header("Stylus Input")]
         [SerializeField] private StylusInputManager stylus;
 
@@ -44,6 +47,11 @@ namespace NeuroReachVR.Input
         {
             get
             {
+                if (currentMode == InputMode.Simulator)
+                {
+                    var sim = activeInput as SimulatorInput;
+                    if (sim != null) return sim.IsPinching;
+                }
                 if (currentMode != InputMode.Hand) return false;
 
                 var handSource = activeInput as HandTrackingXRHands;
@@ -60,6 +68,11 @@ namespace NeuroReachVR.Input
         {
             get
             {
+                if (currentMode == InputMode.Simulator)
+                {
+                    var sim = activeInput as SimulatorInput;
+                    if (sim != null) return sim.PinchStrength;
+                }
                 if (currentMode != InputMode.Hand) return 0f;
 
                 var handSource = activeInput as HandTrackingXRHands;
@@ -75,8 +88,18 @@ namespace NeuroReachVR.Input
         // Stylus-specific properties
         public float Pressure => currentMode == InputMode.Stylus ?
             stylus?.Pressure ?? 0f : 0f;
-        public bool IsStylusPressed => currentMode == InputMode.Stylus &&
-            stylus?.IsPressed == true;
+        public bool IsStylusPressed
+        {
+            get
+            {
+                if (currentMode == InputMode.Simulator)
+                {
+                    var sim = activeInput as SimulatorInput;
+                    if (sim != null) return sim.IsPressed;
+                }
+                return currentMode == InputMode.Stylus && stylus?.IsPressed == true;
+            }
+        }
 
         private void Start()
         {
@@ -103,6 +126,11 @@ namespace NeuroReachVR.Input
                     activeInput = stylus;
                     currentMode = stylus != null && stylus.IsAvailable ? InputMode.Stylus : InputMode.None;
                     break;
+                
+                case InputMode.Simulator:
+                    activeInput = simulatorInput;
+                    currentMode = simulatorInput != null ? InputMode.Simulator : InputMode.None;
+                    break;
 
                 case InputMode.Auto:
                     // Priority: Stylus > Preferred Hand > Other Hand
@@ -121,6 +149,13 @@ namespace NeuroReachVR.Input
                         activeInput = GetOtherHand();
                         currentMode = InputMode.Hand;
                     }
+                    #if UNITY_EDITOR
+                    else if (IsValidInput(simulatorInput))
+                    {
+                        activeInput = simulatorInput;
+                        currentMode = InputMode.Simulator;
+                    }
+                    #endif
                     else
                     {
                         activeInput = null;
@@ -214,6 +249,7 @@ namespace NeuroReachVR.Input
         Auto,
         Hand,
         Stylus,
+        Simulator,
         None
     }
 }

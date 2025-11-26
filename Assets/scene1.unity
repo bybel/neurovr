@@ -9862,6 +9862,7 @@ MonoBehaviour:
   rightHandXR: {fileID: 966114639}
   leftHandLegacy: {fileID: 0}
   rightHandLegacy: {fileID: 0}
+  simulatorInput: {fileID: 0}
   stylus: {fileID: 1814399857}
   preferredMode: 0
   preferredHand: 1

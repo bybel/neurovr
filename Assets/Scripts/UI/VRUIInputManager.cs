@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 using UnityEngine.XR;
@@ -102,10 +103,19 @@ namespace NeuroReachVR.UI
         
         private void Update()
         {
+            if (mainCamera == null || !mainCamera.isActiveAndEnabled)
+            {
+                mainCamera = Camera.main;
+                if (mainCamera == null) mainCamera = UnityEngine.Object.FindFirstObjectByType<Camera>();
+            }
+
             HandleVRInput();
             UpdatePointerVisual();
         }
         
+        private GraphicRaycaster[] cachedRaycasters;
+        private float nextRaycasterRefreshTime;
+
         private void HandleVRInput()
         {
             Vector3 rayOrigin = GetRayOrigin();
@@ -122,12 +132,38 @@ namespace NeuroReachVR.UI
             
             // Raycast against UI
             PointerEventData pointerData = new PointerEventData(eventSystem);
-            pointerData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
-            
-            var results = new System.Collections.Generic.List<RaycastResult>();
-            if (graphicRaycaster != null)
+#if UNITY_EDITOR
+            if (Mouse.current != null)
             {
-                graphicRaycaster.Raycast(pointerData, results);
+                pointerData.position = Mouse.current.position.ReadValue();
+            }
+            else
+            {
+                pointerData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
+            }
+#else
+            pointerData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
+#endif
+
+            var results = new System.Collections.Generic.List<RaycastResult>();
+            
+            // Find all active raycasters to ensure we hit any active UI
+            // Optimize: Cache raycasters and refresh every 1s
+            if (cachedRaycasters == null || Time.time >= nextRaycasterRefreshTime)
+            {
+                cachedRaycasters = FindObjectsByType<GraphicRaycaster>(FindObjectsSortMode.None);
+                nextRaycasterRefreshTime = Time.time + 1f;
+            }
+
+            if (cachedRaycasters != null)
+            {
+                foreach (var caster in cachedRaycasters)
+                {
+                    if (caster != null && caster.gameObject.activeInHierarchy) // Check null/active in case it was destroyed/disabled since cache
+                    {
+                        caster.Raycast(pointerData, results);
+                    }
+                }
             }
             
             // Also do physics raycast for world space UI
@@ -194,6 +230,12 @@ namespace NeuroReachVR.UI
         
         private Vector3 GetRayOrigin()
         {
+#if UNITY_EDITOR
+            if (Mouse.current != null)
+            {
+                return mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue()).origin;
+            }
+#endif
             // Try to get controller/hand position
             if (enableControllerTracking)
             {
@@ -215,6 +257,12 @@ namespace NeuroReachVR.UI
         
         private Vector3 GetRayDirection()
         {
+#if UNITY_EDITOR
+            if (Mouse.current != null)
+            {
+                return mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue()).direction;
+            }
+#endif
             // Try to get controller/hand forward
             if (enableControllerTracking)
             {
@@ -238,12 +286,12 @@ namespace NeuroReachVR.UI
         {
             position = Vector3.zero;
             
-            var inputDevices = new System.Collections.Generic.List<InputDevice>();
+            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, inputDevices);
             
             if (inputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(CommonUsages.devicePosition, out position))
+                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
                     return true;
             }
             
@@ -254,12 +302,12 @@ namespace NeuroReachVR.UI
         {
             rotation = Quaternion.identity;
             
-            var inputDevices = new System.Collections.Generic.List<InputDevice>();
+            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, inputDevices);
             
             if (inputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(CommonUsages.deviceRotation, out rotation))
+                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
                     return true;
             }
             
@@ -270,12 +318,12 @@ namespace NeuroReachVR.UI
         {
             position = Vector3.zero;
             
-            var inputDevices = new System.Collections.Generic.List<InputDevice>();
+            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, inputDevices);
             
             if (inputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(CommonUsages.devicePosition, out position))
+                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
                     return true;
             }
             
@@ -286,12 +334,12 @@ namespace NeuroReachVR.UI
         {
             rotation = Quaternion.identity;
             
-            var inputDevices = new System.Collections.Generic.List<InputDevice>();
+            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, inputDevices);
             
             if (inputDevices.Count > 0)
             {
-                if (inputDevices[0].TryGetFeatureValue(CommonUsages.deviceRotation, out rotation))
+                if (inputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
                     return true;
             }
             
@@ -300,16 +348,22 @@ namespace NeuroReachVR.UI
         
         private bool IsSelectPressed()
         {
+#if UNITY_EDITOR
+            if (Mouse.current != null && Mouse.current.leftButton.isPressed)
+            {
+                return true;
+            }
+#endif
             // Check for trigger/select button press
-            var inputDevices = new System.Collections.Generic.List<InputDevice>();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, inputDevices);
+            var inputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
+            UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, inputDevices);
             
             foreach (var device in inputDevices)
             {
-                if (device.TryGetFeatureValue(CommonUsages.triggerButton, out bool triggerPressed) && triggerPressed)
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool triggerPressed) && triggerPressed)
                     return true;
                 
-                if (device.TryGetFeatureValue(CommonUsages.primaryButton, out bool primaryPressed) && primaryPressed)
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool primaryPressed) && primaryPressed)
                     return true;
             }
             
@@ -364,12 +418,19 @@ namespace NeuroReachVR.UI
             }
         }
         
+        private float lastClickTime;
+        private const float CLICK_COOLDOWN = 0.5f;
+
         private void OnPointerClick(GameObject obj)
         {
+            if (Time.time - lastClickTime < CLICK_COOLDOWN) return;
+            lastClickTime = Time.time;
+
             Button button = obj.GetComponent<Button>();
             if (button != null && button.interactable)
             {
-                button.onClick.Invoke();
+                Debug.Log($"[VRUIInputManager] VRPointer clicked on: {obj.name}");
+                // button.onClick.Invoke(); // Removed to prevent double-invocation
                 
                 // Also trigger pointer click event
                 ExecuteEvents.Execute(obj, new PointerEventData(eventSystem), ExecuteEvents.pointerClickHandler);
