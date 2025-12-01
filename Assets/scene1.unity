@@ -8473,7 +8473,7 @@ MonoBehaviour:
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
-  balloonPrefab: {fileID: 1200888191488435251, guid: d8c01147466964fedaa2ffd34c05db80, type: 3}
+  balloonPrefab: {fileID: 2346095561133664942, guid: 3763f3535841a4842bfe341f2eba7b74, type: 3}
   maxBalloons: 5
   spawnInterval: 2
   spawnCenter: {x: 0, y: 0, z: 0}
