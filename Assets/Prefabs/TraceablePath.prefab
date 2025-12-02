@@ -45,11 +45,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 36bc39c261e124a84aa73537667d9633, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NeuroReachVR.Tasks.TraceablePath
-  pathWidth: 0.1
+  pathWidth: 0.15
   targetColor: {r: 0, g: 0, b: 1, a: 1}
   correctColor: {r: 0, g: 1, b: 0, a: 1}
   errorColor: {r: 1, g: 0, b: 0, a: 1}
-  targetLineRenderer: {fileID: 0}
+  targetLineRenderer: {fileID: 3527370802193858434}
   tracedLineRenderer: {fileID: 0}
   showRealTimeFeedback: 1
 --- !u!120 &3527370802193858434

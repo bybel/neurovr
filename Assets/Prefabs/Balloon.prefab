@@ -29,8 +29,8 @@ Transform:
   m_GameObject: {fileID: 1200888191488435251}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0.31686, y: 0.22181, z: 0.31686}
-  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 0}
@@ -42,7 +42,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1200888191488435251}
-  m_Mesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
+  m_Mesh: {fileID: 5362903646300287040, guid: ed3cbdb633b6c5d46bf04e50db951ef2, type: 3}
 --- !u!23 &7164984536261622726
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -68,7 +68,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  - {fileID: 2100000, guid: feef3c0b833730c4fadccf4eb1ecdbe6, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -110,8 +110,8 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 0.5
-  m_Center: {x: 0, y: 0, z: 0}
+  m_Radius: 1.0
+  m_Center: {x: 0, y: 0.5, z: 0}
 --- !u!114 &4016766715338745201
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -124,6 +124,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 33fd26485c056486d90636865664e3a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NeuroReachVR.Tasks.Balloon
-  popRadius: 0.15
+  popRadius: 0.5
   points: 10
   lifetime: 10

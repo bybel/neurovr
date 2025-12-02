@@ -66,26 +66,79 @@ namespace NeuroReachVR.Tasks
             }
         }
         
+        [Header("Debug")]
+        [SerializeField] private bool showDebugLogs = true;
+        [SerializeField] private bool showOnScreenDebug = true;
+        private float lastDebugLogTime;
+        private string debugText = "";
+        
         protected override void UpdateTask()
         {
             if (inputHandler == null)
             {
+                debugText = "ERROR: InputHandler is NULL!";
                 Debug.LogWarning("[BalloonPopTask] InputHandler not assigned!");
                 return;
             }
             
-            if (!inputHandler.HasValidInput) return;
+            // VERBOSE DEBUG: Log input state every second
+            if (showDebugLogs && Time.time - lastDebugLogTime > 1f)
+            {
+                Debug.Log($"[BalloonPopTask] INPUT STATE - Mode: {inputHandler.CurrentMode}, HasValidInput: {inputHandler.HasValidInput}, IsPinching: {inputHandler.IsPinching}, Position: {inputHandler.Position}, ActiveBalloons: {activeBalloons?.Count ?? 0}");
+                lastDebugLogTime = Time.time;
+            }
+            
+            // Always update debug text
+            debugText = $"Input Mode: {inputHandler.CurrentMode}\n" +
+                       $"Has Valid Input: {inputHandler.HasValidInput}\n" +
+                       $"Is Pinching: {inputHandler.IsPinching}\n" +
+                       $"Position: {inputHandler.Position}\n" +
+                       $"Active Balloons: {activeBalloons?.Count ?? 0}";
+            
+            if (!inputHandler.HasValidInput)
+            {
+                if (showDebugLogs && Time.time - lastDebugLogTime > 2f)
+                {
+                    Debug.LogWarning($"[BalloonPopTask] No valid input! Mode: {inputHandler.CurrentMode}, HasInput: {inputHandler.HasValidInput}");
+                    lastDebugLogTime = Time.time;
+                }
+                return;
+            }
             
             CheckBalloonPops();
             SpawnBalloons();
             CleanupPoppedBalloons();
         }
         
+        // On-screen debug display
+        private void OnGUI()
+        {
+            if (!showOnScreenDebug || !isActive) return;
+            
+            // Draw debug info in top-right corner
+            GUIStyle style = new GUIStyle(GUI.skin.box);
+            style.fontSize = 14;
+            style.alignment = TextAnchor.UpperLeft;
+            style.normal.textColor = Color.white;
+            
+            GUI.Box(new Rect(Screen.width - 320, 10, 310, 150), "");
+            GUI.Label(new Rect(Screen.width - 315, 15, 300, 140), 
+                $"=== Balloon Task Debug ===\n{debugText}", style);
+        }
+        
         private void CheckBalloonPops()
         {
-            if (!inputHandler.IsPinching) return;
-            
             Vector3 handPos = inputHandler.Position;
+            bool isPinching = inputHandler.IsPinching;
+            
+            // Debug log every 0.5 seconds when pinching
+            if (showDebugLogs && isPinching && Time.time - lastDebugLogTime > 0.5f)
+            {
+                Debug.Log($"[BalloonPopTask] Pinching at position: {handPos}, Active balloons: {activeBalloons.Count}");
+                lastDebugLogTime = Time.time;
+            }
+            
+            if (!isPinching) return;
             
             foreach (var balloon in activeBalloons)
             {
@@ -143,14 +196,27 @@ namespace NeuroReachVR.Tasks
         
         private Vector3 GetRandomSpawnPosition()
         {
-            float angle = Random.Range(0f, 360f) * Mathf.Deg2Rad;
-            float radius = Random.Range(0.5f, spawnRadius);
-            float height = Random.Range(minSpawnHeight, maxSpawnHeight);
+            // Get camera position to spawn balloons in front of it
+            Camera cam = Camera.main;
+            Vector3 basePosition = spawnCenter;
             
-            Vector3 pos = spawnCenter;
-            pos.x += Mathf.Cos(angle) * radius;
-            pos.z += Mathf.Sin(angle) * radius;
-            pos.y = height;
+            if (cam != null)
+            {
+                // Spawn in front of camera at the specified depth
+                basePosition = cam.transform.position + cam.transform.forward * 2f;
+            }
+            
+            // Add random offset
+            float xOffset = Random.Range(-spawnRadius, spawnRadius);
+            float yOffset = Random.Range(minSpawnHeight - 1f, maxSpawnHeight - 1f);
+            float zOffset = Random.Range(-0.5f, 0.5f);
+            
+            Vector3 pos = basePosition + new Vector3(xOffset, yOffset, zOffset);
+            
+            if (showDebugLogs)
+            {
+                Debug.Log($"[BalloonPopTask] Spawning balloon at: {pos}");
+            }
             
             return pos;
         }
@@ -216,9 +282,17 @@ namespace NeuroReachVR.Tasks
         
         protected override void OnTaskEnded()
         {
-            foreach (var balloon in activeBalloons)
-                ReturnToPool(balloon);
-            activeBalloons.Clear();
+            // Create a copy of the list to avoid "Collection was modified" exception
+            var balloonsToReturn = new List<Balloon>(activeBalloons);
+            activeBalloons.Clear(); // Clear first to prevent re-entry issues
+            
+            foreach (var balloon in balloonsToReturn)
+            {
+                if (balloon != null)
+                    ReturnToPool(balloon);
+            }
+            
+            Debug.Log($"[BalloonPopTask] Task ended. Final score: {balloonsPopped} balloons popped.");
         }
         
         public void SetDifficulty(float heightRange, float spawnRate)

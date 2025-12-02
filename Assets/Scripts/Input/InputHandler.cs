@@ -49,7 +49,15 @@ namespace NeuroReachVR.Input
             {
                 // Check activeInput type directly (works regardless of how input was selected)
                 if (activeInput is SimulatorInput sim)
-                    return sim.IsPinching;
+                {
+                    bool isPinching = sim.IsPinching;
+                    // Log when pinching state changes or periodically
+                    if (isPinching)
+                    {
+                        Debug.Log($"[InputHandler] IsPinching from SimulatorInput: {isPinching}");
+                    }
+                    return isPinching;
+                }
 
                 if (currentMode != InputMode.Hand) return false;
 
@@ -98,9 +106,49 @@ namespace NeuroReachVR.Input
             }
         }
 
+        private void Awake()
+        {
+            // Auto-find or create SimulatorInput in Editor
+            #if UNITY_EDITOR
+            if (simulatorInput == null)
+            {
+                simulatorInput = FindFirstObjectByType<SimulatorInput>();
+                
+                // If still null, create one
+                if (simulatorInput == null)
+                {
+                    Debug.Log("[InputHandler] Creating SimulatorInput...");
+                    GameObject simObj = new GameObject("SimulatorInput_AutoCreated");
+                    simulatorInput = simObj.AddComponent<SimulatorInput>();
+                }
+                else
+                {
+                    Debug.Log("[InputHandler] Auto-found SimulatorInput");
+                }
+            }
+            #endif
+        }
+
         private void Start()
         {
+            #if UNITY_EDITOR
+            // In Editor, ALWAYS use Simulator mode for testing
+            if (simulatorInput != null)
+            {
+                Debug.Log("[InputHandler] Editor mode - forcing Simulator input");
+                preferredMode = InputMode.Simulator;
+                activeInput = simulatorInput;
+                currentMode = InputMode.Simulator;
+            }
+            else
+            {
+                SelectInputSource();
+            }
+            #else
             SelectInputSource();
+            #endif
+            
+            Debug.Log($"[InputHandler] Started with mode: {currentMode}, HasValidInput: {HasValidInput}");
         }
 
         private void Update()

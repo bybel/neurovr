@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Events;
 using NeuroReachVR.Input;
 using NeuroReachVR.Core;
 using NeuroReachVR.Data;
@@ -24,6 +25,12 @@ namespace NeuroReachVR.Tasks
         [Header("Data Logging")]
         [SerializeField] protected DataLogger dataLogger;
         [SerializeField] protected KinematicDataCollector kinematicCollector;
+        
+        [Header("Events")]
+        [SerializeField] public UnityEvent<string, int, float> OnTaskComplete;
+        
+        // Static event for global listeners (like GameManager/HUDManager)
+        public static event System.Action<BaseTask> OnAnyTaskCompleted;
         
         protected float elapsedTime;
         protected bool isActive;
@@ -109,8 +116,21 @@ namespace NeuroReachVR.Tasks
         
         public virtual void EndTask()
         {
+            if (!isActive) return; // Prevent double-ending
+            
             isActive = false;
+            
+            string taskType = GetType().Name;
+            Debug.Log($"[{taskType}] Task ended - Score: {score}, Duration: {elapsedTime:F1}s");
+            
+            // Call derived class cleanup first
             OnTaskEnded();
+            
+            // Fire Unity Event (for Inspector-assigned listeners)
+            OnTaskComplete?.Invoke(taskType, score, elapsedTime);
+            
+            // Fire static event (for code-based listeners like GameManager)
+            OnAnyTaskCompleted?.Invoke(this);
         }
         
         public virtual void PauseTask()

@@ -56,9 +56,11 @@ namespace NeuroReachVR.UI
         /// </summary>
         public void ShowMenu(string menuName, bool animated = true)
         {
+            Debug.Log($"[MenuManager] ShowMenu called: '{menuName}'");
+            
             if (!menus.ContainsKey(menuName))
             {
-                Debug.LogWarning($"[MenuManager] Menu not found: {menuName}");
+                Debug.LogWarning($"[MenuManager] Menu not found: {menuName}. Available menus: {string.Join(", ", menus.Keys)}");
                 return;
             }
 
@@ -69,6 +71,7 @@ namespace NeuroReachVR.UI
                 menuHistory.Push(currentMenuName);
 
             currentMenuName = menuName;
+            Debug.Log($"[MenuManager] Starting ShowMenuCoroutine for '{menuName}'");
             activeTransition = StartCoroutine(ShowMenuCoroutine(menuName, animated && useAnimations));
         }
 
@@ -132,22 +135,33 @@ namespace NeuroReachVR.UI
         // Coroutines
         private IEnumerator ShowMenuCoroutine(string menuName, bool animated)
         {
+            Debug.Log($"[MenuManager] ShowMenuCoroutine started for '{menuName}', animated={animated}");
+            
             // Hide all menus first
             yield return HideAllMenusCoroutine(animated);
 
             GameObject menuToShow = menus[menuName];
+            Debug.Log($"[MenuManager] Menu to show: {menuToShow?.name ?? "NULL"}");
 
             if (animated)
             {
                 CanvasGroup canvasGroup = menuToShow.GetComponent<CanvasGroup>();
+                if (canvasGroup == null)
+                {
+                    Debug.LogWarning($"[MenuManager] No CanvasGroup on '{menuName}' - adding one");
+                    canvasGroup = menuToShow.AddComponent<CanvasGroup>();
+                }
                 canvasGroup.alpha = 0f;
                 menuToShow.SetActive(true);
+                Debug.Log($"[MenuManager] Fading in '{menuName}'...");
                 yield return UIAnimator.FadeIn(canvasGroup);
             }
             else
             {
                 menuToShow.SetActive(true);
             }
+            
+            Debug.Log($"[MenuManager] ShowMenuCoroutine completed for '{menuName}'");
         }
 
         private IEnumerator HideMenuCoroutine(string menuName, bool animated)

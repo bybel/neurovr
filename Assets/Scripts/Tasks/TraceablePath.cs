@@ -43,17 +43,32 @@ namespace NeuroReachVR.Tasks
             targetPath = new List<Vector3>();
             tracedPath = new List<Vector3>();
             
+            // Try to get existing LineRenderer first, only add if not present
             if (targetLineRenderer == null)
             {
-                targetLineRenderer = gameObject.AddComponent<LineRenderer>();
+                targetLineRenderer = GetComponent<LineRenderer>();
+                if (targetLineRenderer == null)
+                {
+                    targetLineRenderer = gameObject.AddComponent<LineRenderer>();
+                }
                 ConfigureLineRenderer(targetLineRenderer, targetColor);
             }
 
             if (tracedLineRenderer == null && showRealTimeFeedback)
             {
-                GameObject tracedObj = new GameObject("TracedPath");
-                tracedObj.transform.SetParent(transform);
-                tracedLineRenderer = tracedObj.AddComponent<LineRenderer>();
+                // Check if a TracedPath child already exists
+                Transform existingTracedPath = transform.Find("TracedPath");
+                if (existingTracedPath != null)
+                {
+                    tracedLineRenderer = existingTracedPath.GetComponent<LineRenderer>();
+                }
+                
+                if (tracedLineRenderer == null)
+                {
+                    GameObject tracedObj = new GameObject("TracedPath");
+                    tracedObj.transform.SetParent(transform);
+                    tracedLineRenderer = tracedObj.AddComponent<LineRenderer>();
+                }
                 ConfigureLineRenderer(tracedLineRenderer, correctColor);
             }
         }
@@ -141,13 +156,34 @@ namespace NeuroReachVR.Tasks
 
             if (currentSegment < targetPath.Count)
             {
-                float deviation = Vector3.Distance(stylusPosition, targetPath[currentSegment]);
-                totalDeviation += deviation;
-                deviationCount++;
-
-                if (deviation < pathWidth * 1.5f) // Allow some tolerance
+                // Find the closest point on the path (not just the current segment)
+                float minDeviation = float.MaxValue;
+                int closestSegment = currentSegment;
+                
+                // Look ahead a few segments to allow for faster tracing
+                int lookAhead = Mathf.Min(currentSegment + 10, targetPath.Count);
+                for (int i = currentSegment; i < lookAhead; i++)
                 {
-                    currentSegment++;
+                    float dist = Vector3.Distance(stylusPosition, targetPath[i]);
+                    if (dist < minDeviation)
+                    {
+                        minDeviation = dist;
+                        closestSegment = i;
+                    }
+                }
+
+                // More generous tolerance: 3x path width or 0.3m, whichever is larger
+                float tolerance = Mathf.Max(pathWidth * 3f, 0.3f);
+                if (minDeviation < tolerance)
+                {
+                    // Only count deviation when we make progress (not every frame)
+                    // This gives a more accurate representation of tracing quality
+                    totalDeviation += minDeviation;
+                    deviationCount++;
+                    
+                    // Progress to the closest segment we found
+                    currentSegment = closestSegment + 1;
+                    Debug.Log($"[TraceablePath] Progress: {currentSegment}/{targetPath.Count}, deviation: {minDeviation:F3}m");
                 }
             }
 

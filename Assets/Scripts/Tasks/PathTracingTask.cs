@@ -20,7 +20,7 @@ namespace NeuroReachVR.Tasks
         [Header("Tracing Settings")]
         [SerializeField] private float pathWidth = 0.1f;
         [SerializeField] protected int pathSegments = 50;
-        [SerializeField] protected float minAccuracy = 0.7f;
+        [SerializeField] protected float minAccuracy = 0.3f; // Lowered from 0.7 for easier gameplay
         
         [Header("Feedback")]
         [SerializeField] protected TaskFeedback feedback;
@@ -89,6 +89,9 @@ namespace NeuroReachVR.Tasks
                 return;
             }
             
+            // Position the path in front of the camera at a comfortable height
+            PositionPathInFrontOfCamera();
+            
             List<Vector3> pathPoints = GeneratePathPoints();
             
             GameObject pathObj = Instantiate(pathPrefab.gameObject);
@@ -103,8 +106,43 @@ namespace NeuroReachVR.Tasks
             
             currentPath.InitializePath(pathPoints);
             
+            Debug.Log($"[PathTracingTask] Generated path from {pathStart} to {pathEnd} with {pathPoints.Count} points");
+            
             isTracing = true;
             pathStartTime = elapsedTime; // Record when path tracing begins
+        }
+        
+        /// <summary>
+        /// Positions the path start and end points in front of the camera
+        /// Uses the same projection method as SimulatorInput for accurate mouse interaction
+        /// </summary>
+        private void PositionPathInFrontOfCamera()
+        {
+            Camera mainCam = Camera.main;
+            if (mainCam == null) return;
+            
+            // Use the same interaction depth as SimulatorInput (1.5m)
+            float interactionDepth = 1.5f;
+            
+            // Get the center point by projecting the screen center
+            Vector3 screenCenter = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0);
+            Ray centerRay = mainCam.ScreenPointToRay(screenCenter);
+            Vector3 pathCenter = centerRay.GetPoint(interactionDepth);
+            
+            // Get left and right points by projecting screen edges
+            // Use 30% from center to edge for comfortable reach
+            float screenOffset = Screen.width * 0.3f;
+            
+            Vector3 screenLeft = new Vector3(Screen.width * 0.5f - screenOffset, Screen.height * 0.5f, 0);
+            Vector3 screenRight = new Vector3(Screen.width * 0.5f + screenOffset, Screen.height * 0.5f, 0);
+            
+            Ray leftRay = mainCam.ScreenPointToRay(screenLeft);
+            Ray rightRay = mainCam.ScreenPointToRay(screenRight);
+            
+            pathStart = leftRay.GetPoint(interactionDepth);
+            pathEnd = rightRay.GetPoint(interactionDepth);
+            
+            Debug.Log($"[PathTracingTask] Positioned path at center: {pathCenter}, start: {pathStart}, end: {pathEnd}");
         }
         
         protected virtual List<Vector3> GeneratePathPoints()
@@ -140,15 +178,20 @@ namespace NeuroReachVR.Tasks
             bool success = accuracy >= minAccuracy;
             float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
             
+            Debug.Log($"[PathTracingTask] Path completed! Accuracy: {accuracy:P1}, Required: {minAccuracy:P1}, Success: {success}");
+            
             if (success)
             {
                 pathsCompleted++;
-                AddScore(Mathf.RoundToInt(accuracy * 100));
+                int scoreToAdd = Mathf.RoundToInt(accuracy * 100);
+                AddScore(scoreToAdd);
+                Debug.Log($"[PathTracingTask] Score added: {scoreToAdd}, Total paths completed: {pathsCompleted}");
                 feedback?.PlaySuccess(currentPath.transform.position);
             }
             else
             {
                 IncrementError();
+                Debug.Log($"[PathTracingTask] Path failed - accuracy too low");
                 feedback?.PlayError(currentPath.transform.position);
             }
             

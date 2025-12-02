@@ -68,6 +68,12 @@ public class HUDManager : MenuManager
     [SerializeField] private TextMeshProUGUI scoreText;
     [SerializeField] private TextMeshProUGUI progressText;
 
+    [Header("Gameplay HUD (Stays visible during task)")]
+    [SerializeField] private GameObject gameplayHUD;
+    private TextMeshProUGUI gameplayScoreText;
+    private TextMeshProUGUI gameplayProgressText;
+    private TextMeshProUGUI gameplayTimerText;
+
     [Header("Main Menu Title")]
     [SerializeField] private TextMeshProUGUI mainMenuTitleText;
 
@@ -434,16 +440,31 @@ public class HUDManager : MenuManager
             Debug.Log("[HUDManager] Auto-fixing loginButton assignment...");
             // Find a button in patientLoginMenu that could be the login button
             var buttonsInLoginMenu = patientLoginMenu.GetComponentsInChildren<Button>(true);
+            Button fallbackButton = null;
             foreach (var btn in buttonsInLoginMenu)
             {
                 string btnName = btn.name.ToLower();
-                // Look for button with "login" or "log" in name (not "back")
-                if ((btnName.Contains("login") || btnName.Contains("log")) && !btnName.Contains("back"))
+                // Skip "back" buttons and "log2csv" buttons (CSV logging, not login)
+                if (btnName.Contains("back") || btnName.Contains("csv") || btnName.Contains("2csv"))
+                    continue;
+                    
+                // Prefer button with "login" or "submit" or "enter" in name
+                if (btnName.Contains("login") || btnName.Contains("submit") || btnName.Contains("enter") || btnName.Contains("confirm"))
                 {
                     Debug.Log($"[HUDManager] Found login button in correct menu: {btn.name}");
                     loginButton = btn;
                     break;
                 }
+                // Keep first non-back button as fallback
+                if (fallbackButton == null)
+                    fallbackButton = btn;
+            }
+            
+            // If no specific login button found but there's a fallback, use it
+            if (loginButton == null && fallbackButton != null)
+            {
+                Debug.Log($"[HUDManager] Using fallback button as login: {fallbackButton.name}");
+                loginButton = fallbackButton;
             }
         }
         
@@ -593,8 +614,333 @@ public class HUDManager : MenuManager
             Debug.Log("[HUDManager] DifficultyBackButton auto-created successfully.");
         }
         
-        // Create "Continue as Guest" button on login menu (VR-friendly - no keyboard needed)
-        CreateGuestButtonOnLoginMenu();
+        // Note: "Continue As Guest" is now on the main menu, so we don't need a separate 
+        // guest button on the login menu. The login menu is for registered users only.
+        // CreateGuestButtonOnLoginMenu(); // Disabled - main menu has this now
+        
+        // Create Gameplay HUD that stays visible during tasks
+        CreateGameplayHUD();
+        
+        // Create Task Completion menu if it doesn't exist
+        CreateTaskCompletionMenu();
+    }
+    
+    /// <summary>
+    /// Creates a task completion menu if one doesn't exist in the scene
+    /// Uses WorldSpace rendering for VR visibility
+    /// </summary>
+    private void CreateTaskCompletionMenu()
+    {
+        if (taskCompletionMenu != null) return; // Already exists
+        
+        Debug.Log("[HUDManager] Creating Task Completion Menu (WorldSpace for VR)...");
+        
+        // Create a new Canvas for the completion menu
+        taskCompletionMenu = new GameObject("TaskCompletionMenu_AutoCreated");
+        
+        // Add Canvas component - USE WORLDSPACE FOR VR VISIBILITY
+        Canvas canvas = taskCompletionMenu.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 200; // On top of gameplay HUD
+        
+        // Set up the RectTransform for WorldSpace canvas
+        RectTransform canvasRect = taskCompletionMenu.GetComponent<RectTransform>();
+        canvasRect.sizeDelta = new Vector2(600, 500);
+        canvasRect.localScale = Vector3.one * 0.003f; // Scale for VR (1.8m x 1.5m at this scale)
+        
+        // Position in front of the camera
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            taskCompletionMenu.transform.SetParent(mainCam.transform, false);
+            taskCompletionMenu.transform.localPosition = new Vector3(0, 0.1f, 1.5f); // Centered, slightly up, forward
+            taskCompletionMenu.transform.localRotation = Quaternion.identity;
+            canvas.worldCamera = mainCam;
+        }
+        else
+        {
+            taskCompletionMenu.transform.position = new Vector3(0, 1.6f, 2f);
+        }
+        
+        // Add CanvasScaler
+        var scaler = taskCompletionMenu.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.dynamicPixelsPerUnit = 10;
+        
+        // Add GraphicRaycaster for button interaction
+        taskCompletionMenu.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+        
+        // Create background panel
+        GameObject panel = new GameObject("CompletionPanel");
+        panel.transform.SetParent(taskCompletionMenu.transform, false);
+        
+        RectTransform panelRect = panel.AddComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+        
+        var panelImage = panel.AddComponent<UnityEngine.UI.Image>();
+        panelImage.color = new Color(0.1f, 0.1f, 0.2f, 0.95f); // Dark blue background
+        
+        // Create Title
+        GameObject titleObj = new GameObject("CompletionTitle");
+        titleObj.transform.SetParent(panel.transform, false);
+        completionTitleText = titleObj.AddComponent<TextMeshProUGUI>();
+        completionTitleText.text = "Task Complete!";
+        completionTitleText.fontSize = 56;
+        completionTitleText.color = new Color(0.3f, 1f, 0.5f); // Green
+        completionTitleText.fontStyle = FontStyles.Bold;
+        completionTitleText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform titleRect = titleObj.GetComponent<RectTransform>();
+        titleRect.anchorMin = new Vector2(0, 0.8f);
+        titleRect.anchorMax = new Vector2(1, 1f);
+        titleRect.offsetMin = new Vector2(20, 10);
+        titleRect.offsetMax = new Vector2(-20, -10);
+        
+        // Create Task Type Text
+        GameObject taskTypeObj = new GameObject("TaskTypeText");
+        taskTypeObj.transform.SetParent(panel.transform, false);
+        taskTypeText = taskTypeObj.AddComponent<TextMeshProUGUI>();
+        taskTypeText.text = "Balloon Pop";
+        taskTypeText.fontSize = 36;
+        taskTypeText.color = Color.white;
+        taskTypeText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform taskTypeRect = taskTypeObj.GetComponent<RectTransform>();
+        taskTypeRect.anchorMin = new Vector2(0, 0.65f);
+        taskTypeRect.anchorMax = new Vector2(1, 0.8f);
+        taskTypeRect.offsetMin = new Vector2(20, 0);
+        taskTypeRect.offsetMax = new Vector2(-20, 0);
+        
+        // Create Final Score Text
+        GameObject scoreObj = new GameObject("FinalScoreText");
+        scoreObj.transform.SetParent(panel.transform, false);
+        finalScoreText = scoreObj.AddComponent<TextMeshProUGUI>();
+        finalScoreText.text = "Score: 0";
+        finalScoreText.fontSize = 48;
+        finalScoreText.color = new Color(1f, 0.9f, 0.3f); // Gold
+        finalScoreText.fontStyle = FontStyles.Bold;
+        finalScoreText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform scoreRect = scoreObj.GetComponent<RectTransform>();
+        scoreRect.anchorMin = new Vector2(0, 0.5f);
+        scoreRect.anchorMax = new Vector2(1, 0.65f);
+        scoreRect.offsetMin = new Vector2(20, 0);
+        scoreRect.offsetMax = new Vector2(-20, 0);
+        
+        // Create Duration Text
+        GameObject durationObj = new GameObject("SessionDurationText");
+        durationObj.transform.SetParent(panel.transform, false);
+        sessionDurationText = durationObj.AddComponent<TextMeshProUGUI>();
+        sessionDurationText.text = "Time: 0:00";
+        sessionDurationText.fontSize = 36;
+        sessionDurationText.color = new Color(0.7f, 0.9f, 1f); // Light blue
+        sessionDurationText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform durationRect = durationObj.GetComponent<RectTransform>();
+        durationRect.anchorMin = new Vector2(0, 0.38f);
+        durationRect.anchorMax = new Vector2(1, 0.5f);
+        durationRect.offsetMin = new Vector2(20, 0);
+        durationRect.offsetMax = new Vector2(-20, 0);
+        
+        // Create Performance Rating Text
+        GameObject ratingObj = new GameObject("PerformanceRatingText");
+        ratingObj.transform.SetParent(panel.transform, false);
+        performanceRatingText = ratingObj.AddComponent<TextMeshProUGUI>();
+        performanceRatingText.text = "Great Job!";
+        performanceRatingText.fontSize = 40;
+        performanceRatingText.color = new Color(0.5f, 1f, 0.5f); // Light green
+        performanceRatingText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform ratingRect = ratingObj.GetComponent<RectTransform>();
+        ratingRect.anchorMin = new Vector2(0, 0.25f);
+        ratingRect.anchorMax = new Vector2(1, 0.38f);
+        ratingRect.offsetMin = new Vector2(20, 0);
+        ratingRect.offsetMax = new Vector2(-20, 0);
+        
+        // Create Buttons Container
+        GameObject buttonsContainer = new GameObject("ButtonsContainer");
+        buttonsContainer.transform.SetParent(panel.transform, false);
+        
+        RectTransform buttonsRect = buttonsContainer.AddComponent<RectTransform>();
+        buttonsRect.anchorMin = new Vector2(0, 0);
+        buttonsRect.anchorMax = new Vector2(1, 0.22f);
+        buttonsRect.offsetMin = new Vector2(40, 20);
+        buttonsRect.offsetMax = new Vector2(-40, -10);
+        
+        var horizontalLayout = buttonsContainer.AddComponent<UnityEngine.UI.HorizontalLayoutGroup>();
+        horizontalLayout.spacing = 30;
+        horizontalLayout.childAlignment = TextAnchor.MiddleCenter;
+        horizontalLayout.childForceExpandWidth = true;
+        horizontalLayout.childForceExpandHeight = true;
+        
+        // Create Retry Button
+        retryTaskButton = CreateCompletionButton(buttonsContainer.transform, "RetryButton", "Try Again", new Color(0.2f, 0.6f, 1f));
+        retryTaskButton.onClick.AddListener(OnRetryTaskClicked);
+        
+        // Create Back to Menu Button
+        backToMenuButton = CreateCompletionButton(buttonsContainer.transform, "BackToMenuButton", "Main Menu", new Color(0.8f, 0.3f, 0.3f));
+        backToMenuButton.onClick.AddListener(OnBackToMenuClicked);
+        
+        // Start hidden
+        taskCompletionMenu.SetActive(false);
+        
+        Debug.Log("[HUDManager] Task Completion Menu created successfully.");
+    }
+    
+    /// <summary>
+    /// Helper to create a styled button for the completion menu
+    /// </summary>
+    private UnityEngine.UI.Button CreateCompletionButton(Transform parent, string name, string text, Color bgColor)
+    {
+        GameObject buttonObj = new GameObject(name);
+        buttonObj.transform.SetParent(parent, false);
+        
+        var buttonImage = buttonObj.AddComponent<UnityEngine.UI.Image>();
+        buttonImage.color = bgColor;
+        
+        var button = buttonObj.AddComponent<UnityEngine.UI.Button>();
+        button.targetGraphic = buttonImage;
+        
+        // Add collider for VR interaction
+        var collider = buttonObj.AddComponent<BoxCollider>();
+        collider.size = new Vector3(200, 60, 10);
+        
+        // Create button text
+        GameObject textObj = new GameObject("Text");
+        textObj.transform.SetParent(buttonObj.transform, false);
+        
+        var buttonText = textObj.AddComponent<TextMeshProUGUI>();
+        buttonText.text = text;
+        buttonText.fontSize = 32;
+        buttonText.color = Color.white;
+        buttonText.fontStyle = FontStyles.Bold;
+        buttonText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform textRect = textObj.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        
+        return button;
+    }
+    
+    /// <summary>
+    /// Creates a persistent HUD for displaying score/progress during gameplay
+    /// This HUD stays visible when all menus are hidden
+    /// Uses WorldSpace rendering to be visible in VR
+    /// </summary>
+    private void CreateGameplayHUD()
+    {
+        if (gameplayHUD != null) return; // Already exists
+        
+        Debug.Log("[HUDManager] Creating Gameplay HUD (WorldSpace for VR)...");
+        
+        // Create a new Canvas for gameplay HUD
+        gameplayHUD = new GameObject("GameplayHUD_AutoCreated");
+        
+        // Add Canvas component - USE WORLDSPACE FOR VR VISIBILITY
+        Canvas canvas = gameplayHUD.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.WorldSpace;
+        canvas.sortingOrder = 100; // On top of everything
+        
+        // Set up the RectTransform for WorldSpace canvas
+        RectTransform canvasRect = gameplayHUD.GetComponent<RectTransform>();
+        canvasRect.sizeDelta = new Vector2(400, 150);
+        canvasRect.localScale = Vector3.one * 0.002f; // Scale down for VR (1 unit = 1 meter)
+        
+        // Position the HUD in front of the camera, slightly to the left and up
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            // Position relative to camera - top-left of view
+            gameplayHUD.transform.SetParent(mainCam.transform, false);
+            gameplayHUD.transform.localPosition = new Vector3(-0.4f, 0.3f, 1.0f); // Left, up, forward
+            gameplayHUD.transform.localRotation = Quaternion.identity;
+        }
+        else
+        {
+            // Fallback position if no camera
+            gameplayHUD.transform.position = new Vector3(-0.5f, 1.8f, 1.5f);
+            gameplayHUD.transform.rotation = Quaternion.identity;
+        }
+        
+        // Assign camera for WorldSpace canvas
+        canvas.worldCamera = mainCam;
+        
+        // Add CanvasScaler (optional for WorldSpace but good practice)
+        var scaler = gameplayHUD.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.dynamicPixelsPerUnit = 10;
+        
+        // Add GraphicRaycaster
+        gameplayHUD.AddComponent<UnityEngine.UI.GraphicRaycaster>();
+        
+        // Create a panel for the HUD elements
+        GameObject panel = new GameObject("HUDPanel");
+        panel.transform.SetParent(gameplayHUD.transform, false);
+        
+        RectTransform panelRect = panel.AddComponent<RectTransform>();
+        panelRect.anchorMin = Vector2.zero;
+        panelRect.anchorMax = Vector2.one;
+        panelRect.offsetMin = Vector2.zero;
+        panelRect.offsetMax = Vector2.zero;
+        
+        // Add semi-transparent background
+        var panelImage = panel.AddComponent<UnityEngine.UI.Image>();
+        panelImage.color = new Color(0, 0, 0, 0.7f); // Slightly more opaque for VR visibility
+        
+        // Create Score Text - larger font for VR readability
+        GameObject scoreObj = new GameObject("GameplayScoreText");
+        scoreObj.transform.SetParent(panel.transform, false);
+        gameplayScoreText = scoreObj.AddComponent<TextMeshProUGUI>();
+        gameplayScoreText.text = "Score: 0";
+        gameplayScoreText.fontSize = 48; // Larger for VR
+        gameplayScoreText.color = Color.white;
+        gameplayScoreText.fontStyle = FontStyles.Bold;
+        gameplayScoreText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform scoreRect = scoreObj.GetComponent<RectTransform>();
+        scoreRect.anchorMin = new Vector2(0, 0.6f);
+        scoreRect.anchorMax = new Vector2(1, 1);
+        scoreRect.offsetMin = new Vector2(10, 0);
+        scoreRect.offsetMax = new Vector2(-10, -5);
+        
+        // Create Progress Text
+        GameObject progressObj = new GameObject("GameplayProgressText");
+        progressObj.transform.SetParent(panel.transform, false);
+        gameplayProgressText = progressObj.AddComponent<TextMeshProUGUI>();
+        gameplayProgressText.text = "Progress: 0%";
+        gameplayProgressText.fontSize = 36; // Larger for VR
+        gameplayProgressText.color = new Color(0.9f, 0.9f, 0.5f); // Yellow tint
+        gameplayProgressText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform progressRect = progressObj.GetComponent<RectTransform>();
+        progressRect.anchorMin = new Vector2(0, 0.3f);
+        progressRect.anchorMax = new Vector2(1, 0.6f);
+        progressRect.offsetMin = new Vector2(10, 0);
+        progressRect.offsetMax = new Vector2(-10, 0);
+        
+        // Create Timer Text
+        GameObject timerObj = new GameObject("GameplayTimerText");
+        timerObj.transform.SetParent(panel.transform, false);
+        gameplayTimerText = timerObj.AddComponent<TextMeshProUGUI>();
+        gameplayTimerText.text = "Time: 1:00";
+        gameplayTimerText.fontSize = 32; // Larger for VR
+        gameplayTimerText.color = new Color(0.7f, 0.9f, 1f); // Light blue
+        gameplayTimerText.alignment = TextAlignmentOptions.Center;
+        
+        RectTransform timerRect = timerObj.GetComponent<RectTransform>();
+        timerRect.anchorMin = new Vector2(0, 0);
+        timerRect.anchorMax = new Vector2(1, 0.3f);
+        timerRect.offsetMin = new Vector2(10, 5);
+        timerRect.offsetMax = new Vector2(-10, 0);
+        
+        // Start hidden
+        gameplayHUD.SetActive(false);
+        
+        Debug.Log("[HUDManager] Gameplay HUD created successfully.");
     }
     
     /// <summary>
@@ -629,14 +975,28 @@ public class HUDManager : MenuManager
             guestButton = guestButtonObj.GetComponent<Button>();
             guestButton.onClick.RemoveAllListeners();
             
-            // Update text
+            // Make button wider to fit text
+            RectTransform rect = guestButtonObj.GetComponent<RectTransform>();
+            rect.sizeDelta = new Vector2(200, 40); // Wider button
+            rect.anchoredPosition = new Vector2(0, -40); // Position between Login and Back
+            
+            // Update text with proper sizing
             var tmpText = guestButtonObj.GetComponentInChildren<TextMeshProUGUI>();
             if (tmpText != null)
-                tmpText.text = "Continue as Guest";
+            {
+                tmpText.text = "Guest Mode";  // Shorter text that fits
+                tmpText.fontSize = 16; // Smaller font to fit
+                tmpText.enableAutoSizing = true;
+                tmpText.fontSizeMin = 12;
+                tmpText.fontSizeMax = 18;
+            }
             
-            // Position below other buttons
-            RectTransform rect = guestButtonObj.GetComponent<RectTransform>();
-            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x, rect.anchoredPosition.y - 80);
+            // Change color to distinguish from Login button
+            var image = guestButtonObj.GetComponent<UnityEngine.UI.Image>();
+            if (image != null)
+            {
+                image.color = new Color(0.3f, 0.5f, 0.8f, 1f); // Blue tint for guest
+            }
         }
         else
         {
@@ -645,28 +1005,31 @@ public class HUDManager : MenuManager
             guestButtonObj.transform.SetParent(buttonContainer, false);
             
             var image = guestButtonObj.AddComponent<UnityEngine.UI.Image>();
-            image.color = new Color(0.2f, 0.6f, 0.2f, 0.9f); // Green tint for guest
+            image.color = new Color(0.3f, 0.5f, 0.8f, 1f); // Blue tint for guest
             
             guestButton = guestButtonObj.AddComponent<Button>();
             guestButton.targetGraphic = image;
             
             RectTransform rect = guestButtonObj.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(300, 60);
-            rect.anchoredPosition = new Vector2(0, -150);
+            rect.sizeDelta = new Vector2(200, 40);
+            rect.anchoredPosition = new Vector2(0, -40);
             
             GameObject textObj = new GameObject("Text (TMP)");
             textObj.transform.SetParent(guestButtonObj.transform, false);
             var tmpText = textObj.AddComponent<TextMeshProUGUI>();
-            tmpText.text = "Continue as Guest";
-            tmpText.fontSize = 24;
+            tmpText.text = "Guest Mode";
+            tmpText.fontSize = 16;
+            tmpText.enableAutoSizing = true;
+            tmpText.fontSizeMin = 12;
+            tmpText.fontSizeMax = 18;
             tmpText.color = Color.white;
             tmpText.alignment = TextAlignmentOptions.Center;
             
             RectTransform textRect = textObj.GetComponent<RectTransform>();
             textRect.anchorMin = Vector2.zero;
             textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = Vector2.zero;
-            textRect.offsetMax = Vector2.zero;
+            textRect.offsetMin = new Vector2(5, 5); // Padding
+            textRect.offsetMax = new Vector2(-5, -5);
         }
         
         // Add click listener for guest mode
@@ -706,12 +1069,15 @@ public class HUDManager : MenuManager
             }
         }
         
-        // Main Menu
+        // Main Menu - "Continue As Guest" button (was selectTaskButton)
         if (selectTaskButton != null)
         {
-            selectTaskButton.onClick.AddListener(() => { Debug.Log("[HUDManager] Select Task clicked"); ShowMenu("selectTask"); });
+            selectTaskButton.onClick.AddListener(() => { 
+                Debug.Log("[HUDManager] Continue As Guest clicked"); 
+                OnSkipLoginClicked(); // Use guest mode and go to task selection
+            });
         }
-        else Debug.LogError("[HUDManager] selectTaskButton is NULL!");
+        else Debug.LogError("[HUDManager] selectTaskButton (Continue As Guest) is NULL!");
         
         if (patientLoginButton != null)
         {
@@ -866,6 +1232,43 @@ public class HUDManager : MenuManager
             score = gameManager.CurrentTask.Score;
             UpdateScoreText();
             UpdateProgressText(gameManager.CurrentTask.Progress);
+            UpdateGameplayHUD();
+        }
+    }
+    
+    /// <summary>
+    /// Updates the gameplay HUD with current task stats
+    /// </summary>
+    private void UpdateGameplayHUD()
+    {
+        if (gameplayHUD == null || !gameplayHUD.activeSelf) return;
+        if (gameManager?.CurrentTask == null) return;
+        
+        var task = gameManager.CurrentTask;
+        
+        // Update score
+        if (gameplayScoreText != null)
+            gameplayScoreText.text = $"Score: {task.Score}";
+        
+        // Update progress
+        if (gameplayProgressText != null)
+            gameplayProgressText.text = $"Progress: {Mathf.RoundToInt(task.Progress * 100)}%";
+        
+        // Update timer
+        if (gameplayTimerText != null)
+        {
+            float remaining = task.RemainingTime;
+            int minutes = Mathf.FloorToInt(remaining / 60f);
+            int seconds = Mathf.FloorToInt(remaining % 60f);
+            gameplayTimerText.text = $"Time: {minutes}:{seconds:00}";
+            
+            // Change color when low on time
+            if (remaining < 10f)
+                gameplayTimerText.color = Color.red;
+            else if (remaining < 30f)
+                gameplayTimerText.color = new Color(1f, 0.6f, 0.2f); // Orange
+            else
+                gameplayTimerText.color = new Color(0.9f, 0.9f, 0.5f); // Yellow
         }
     }
 
@@ -961,9 +1364,55 @@ public class HUDManager : MenuManager
 
         // Hide all menus
         HideAllMenus();
+        
+        // Show gameplay HUD
+        ShowGameplayHUD();
 
         // Start the task
         gameManager.StartTask(selectedTask);
+    }
+    
+    /// <summary>
+    /// Shows the gameplay HUD for displaying score during tasks
+    /// </summary>
+    private void ShowGameplayHUD()
+    {
+        // Create HUD if it doesn't exist
+        if (gameplayHUD == null)
+        {
+            Debug.Log("[HUDManager] GameplayHUD was null, creating it now...");
+            CreateGameplayHUD();
+        }
+        
+        if (gameplayHUD != null)
+        {
+            gameplayHUD.SetActive(true);
+            Debug.Log("[HUDManager] Gameplay HUD shown");
+            
+            // Initialize with zeros
+            if (gameplayScoreText != null)
+                gameplayScoreText.text = "Score: 0";
+            if (gameplayProgressText != null)
+                gameplayProgressText.text = "Progress: 0%";
+            if (gameplayTimerText != null)
+                gameplayTimerText.text = "Time: 1:00";
+        }
+        else
+        {
+            Debug.LogError("[HUDManager] Failed to create Gameplay HUD!");
+        }
+    }
+    
+    /// <summary>
+    /// Hides the gameplay HUD
+    /// </summary>
+    private void HideGameplayHUD()
+    {
+        if (gameplayHUD != null)
+        {
+            gameplayHUD.SetActive(false);
+            Debug.Log("[HUDManager] Gameplay HUD hidden");
+        }
     }
 
     private void QuitApplication()
@@ -1011,6 +1460,9 @@ public class HUDManager : MenuManager
     {
         Debug.Log($"[HUDManager] Task completion notification received - Type: {taskType}, Score: {score}, Duration: {duration:F1}s");
         
+        // Hide gameplay HUD
+        HideGameplayHUD();
+        
         // Store completion data
         lastTaskScore = score;
         lastTaskDuration = duration;
@@ -1018,7 +1470,60 @@ public class HUDManager : MenuManager
         
         // Populate and show the completion menu
         PopulateCompletionMenu();
+        
+        // Show the completion menu
+        Debug.Log($"[HUDManager] Showing task completion menu. Menu exists: {taskCompletionMenu != null}");
+        if (taskCompletionMenu != null)
+        {
+            // Reposition the menu in front of the camera
+            RepositionCompletionMenu();
+            
+            taskCompletionMenu.SetActive(true);
+            Debug.Log($"[HUDManager] Task completion menu activated at position: {taskCompletionMenu.transform.position}");
+        }
         ShowMenu("taskCompletion");
+    }
+    
+    /// <summary>
+    /// Repositions the completion menu in front of the current camera position
+    /// </summary>
+    private void RepositionCompletionMenu()
+    {
+        if (taskCompletionMenu == null) return;
+        
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            // Unparent from camera first to set world position correctly
+            taskCompletionMenu.transform.SetParent(null, true);
+            
+            // Position directly in front of where the player is looking
+            Vector3 forward = mainCam.transform.forward;
+            forward.y = 0; // Keep it level
+            if (forward.sqrMagnitude < 0.01f)
+                forward = Vector3.forward; // Fallback if looking straight up/down
+            forward.Normalize();
+            
+            // Place it 2m in front, at eye level
+            Vector3 targetPos = mainCam.transform.position + forward * 2.0f;
+            targetPos.y = mainCam.transform.position.y; // Same height as camera
+            
+            taskCompletionMenu.transform.position = targetPos;
+            taskCompletionMenu.transform.rotation = Quaternion.LookRotation(forward);
+            
+            // Ensure canvas has camera reference
+            Canvas canvas = taskCompletionMenu.GetComponent<Canvas>();
+            if (canvas != null && canvas.renderMode == RenderMode.WorldSpace)
+            {
+                canvas.worldCamera = mainCam;
+            }
+            
+            Debug.Log($"[HUDManager] Repositioned completion menu to {targetPos}, looking at camera from {forward}");
+        }
+        else
+        {
+            Debug.LogWarning("[HUDManager] No main camera found for repositioning completion menu");
+        }
     }
     
     /// <summary>
@@ -1120,11 +1625,11 @@ public class HUDManager : MenuManager
         
         return adjustedEfficiency switch
         {
-            >= 5.0f => "★★★★★ Excellent!",
-            >= 3.5f => "★★★★☆ Great!",
-            >= 2.0f => "★★★☆☆ Good",
-            >= 1.0f => "★★☆☆☆ Fair",
-            _ => "★☆☆☆☆ Keep Practicing"
+            >= 5.0f => "***** Excellent!",
+            >= 3.5f => "**** Great!",
+            >= 2.0f => "*** Good",
+            >= 1.0f => "** Fair",
+            _ => "* Keep Practicing"
         };
     }
     
@@ -1158,7 +1663,19 @@ public class HUDManager : MenuManager
         
         // Hide menus and restart the task
         HideAllMenus();
+        ShowGameplayHUD();
         gameManager.StartTask(selectedTask);
+    }
+    
+    /// <summary>
+    /// Callback for back to menu button - returns to main menu
+    /// </summary>
+    private void OnBackToMenuClicked()
+    {
+        Debug.Log("[HUDManager] Back to Menu clicked");
+        HideAllMenus();
+        HideGameplayHUD();
+        ShowMenu("main");
     }
     
     #region Pause Menu

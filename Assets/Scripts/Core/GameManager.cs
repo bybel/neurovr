@@ -81,6 +81,55 @@ namespace NeuroReachVR.Core
         {
             if (autoInitialize)
                 Initialize();
+            
+            // Subscribe to task completion events
+            BaseTask.OnAnyTaskCompleted += HandleTaskCompleted;
+        }
+        
+        private void OnDestroy()
+        {
+            // Unsubscribe to prevent memory leaks
+            BaseTask.OnAnyTaskCompleted -= HandleTaskCompleted;
+        }
+        
+        /// <summary>
+        /// Called when any task completes (via BaseTask.OnAnyTaskCompleted event)
+        /// </summary>
+        private void HandleTaskCompleted(BaseTask task)
+        {
+            if (task != currentTask) return; // Ignore if not our active task
+            
+            Debug.Log($"[GameManager] Task completed: {task.GetType().Name}, Score: {task.Score}");
+            
+            string taskType = task.GetType().Name;
+            int finalScore = task.Score;
+            float finalDuration = task.ElapsedTime;
+            
+            // Record session completion
+            if (patientDataManager != null)
+            {
+                patientDataManager.RecordSessionCompletion(
+                    patientDataManager.GetCurrentPatientID(),
+                    taskType,
+                    finalDuration,
+                    finalScore
+                );
+            }
+            
+            currentTask = null;
+            currentState = GameState.TaskComplete;
+            
+            // Notify HUDManager to show completion UI
+            if (hudManager != null)
+            {
+                hudManager.OnTaskCompleted(taskType, finalScore, finalDuration);
+            }
+            else
+            {
+                Debug.LogWarning("[GameManager] HUDManager not assigned - cannot show task completion UI");
+            }
+            
+            OnGameStateChanged?.Invoke(currentState);
         }
         
         public void Initialize()

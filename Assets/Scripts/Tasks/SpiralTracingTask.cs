@@ -10,9 +10,9 @@ namespace NeuroReachVR.Tasks
     public class SpiralTracingTask : PathTracingTask
     {
         [Header("Spiral Settings")]
-        [SerializeField] private float spiralStartRadius = 0.2f;
-        [SerializeField] private float spiralEndRadius = 0.8f;
-        [SerializeField] private int spiralTurns = 3;
+        [SerializeField] private float spiralStartRadius = 0.05f; // Smaller for easier mouse tracing
+        [SerializeField] private float spiralEndRadius = 0.3f;    // Smaller for easier mouse tracing
+        [SerializeField] private int spiralTurns = 2;             // Fewer turns for easier completion
         [SerializeField] private float tightnessFactor = 1f; // Higher = tighter spirals
         
         [Header("Velocity Tracking")]
@@ -81,7 +81,42 @@ namespace NeuroReachVR.Tasks
         private List<Vector3> GenerateSpiralPath()
         {
             var path = new List<Vector3>();
-            Vector3 center = (pathStart + pathEnd) * 0.5f;
+            
+            Camera mainCam = Camera.main;
+            if (mainCam == null)
+            {
+                Debug.LogError("[SpiralTracingTask] No main camera found!");
+                return path;
+            }
+            
+            // Use the same interaction depth as SimulatorInput (1.5m)
+            float interactionDepth = 1.5f;
+            
+            // Position spiral at a fixed point in front of the camera at eye level
+            // This creates a predictable position that users can see and trace
+            Vector3 camPos = mainCam.transform.position;
+            Vector3 camForward = mainCam.transform.forward;
+            
+            // Flatten forward direction to horizontal (ignore camera pitch)
+            Vector3 flatForward = new Vector3(camForward.x, 0, camForward.z);
+            if (flatForward.sqrMagnitude < 0.01f)
+                flatForward = Vector3.forward;
+            flatForward.Normalize();
+            
+            // Center: in front of camera at same height (eye level)
+            Vector3 center = camPos + flatForward * interactionDepth;
+            // Keep Y at camera height so spiral is at eye level
+            center.y = camPos.y;
+            
+            // Spiral plane: horizontal (XZ) plane at eye level
+            // This matches how mouse Y maps to world Y more predictably
+            Vector3 planeRight = mainCam.transform.right;
+            planeRight.y = 0;
+            planeRight.Normalize();
+            
+            Vector3 planeUp = Vector3.up; // Pure vertical
+            
+            Debug.Log($"[SpiralTracingTask] Positioned spiral at center: {center}, camY: {camPos.y}, forward: {flatForward}");
             
             int totalSegments = pathSegments * spiralTurns;
             
@@ -91,11 +126,9 @@ namespace NeuroReachVR.Tasks
                 float angle = t * TWO_PI * spiralTurns;
                 float radius = Mathf.Lerp(spiralStartRadius, spiralEndRadius, t) * tightnessFactor;
                 
-                Vector3 point = center + new Vector3(
-                    Mathf.Cos(angle) * radius,
-                    0f,
-                    Mathf.Sin(angle) * radius
-                );
+                // Create spiral in a vertical plane (using right for horizontal, up for vertical)
+                Vector3 offset = planeRight * Mathf.Cos(angle) * radius + planeUp * Mathf.Sin(angle) * radius;
+                Vector3 point = center + offset;
                 
                 path.Add(point);
             }
@@ -109,19 +142,26 @@ namespace NeuroReachVR.Tasks
             float velocityScore = currentAngularVelocity >= minAngularVelocity && 
                                  currentAngularVelocity <= maxAngularVelocity ? 1f : 0.5f;
             
-            float combinedAccuracy = (currentPath.Accuracy + radialAccuracy) * 0.5f * velocityScore;
+            // For easier gameplay, use path accuracy directly without velocity penalty
+            float pathAccuracy = currentPath.Accuracy;
+            float combinedAccuracy = pathAccuracy; // Simplified: just use path accuracy
             bool success = combinedAccuracy >= minAccuracy;
             float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
+            
+            Debug.Log($"[SpiralTracingTask] Path completed! PathAccuracy: {pathAccuracy:P1}, RadialAccuracy: {radialAccuracy:P1}, VelocityScore: {velocityScore:F2}, CombinedAccuracy: {combinedAccuracy:P1}, Required: {minAccuracy:P1}, Success: {success}");
             
             if (success)
             {
                 pathsCompleted++;
-                AddScore(Mathf.RoundToInt(combinedAccuracy * 100));
+                int scoreToAdd = Mathf.RoundToInt(combinedAccuracy * 100);
+                AddScore(scoreToAdd);
+                Debug.Log($"[SpiralTracingTask] Score added: {scoreToAdd}, Total paths completed: {pathsCompleted}");
                 feedback?.PlaySuccess(currentPath.transform.position);
             }
             else
             {
                 IncrementError();
+                Debug.Log($"[SpiralTracingTask] Path failed - accuracy too low");
                 feedback?.PlayError(currentPath.transform.position);
             }
             
