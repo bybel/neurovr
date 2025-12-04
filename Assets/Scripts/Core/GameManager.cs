@@ -52,6 +52,8 @@ namespace NeuroReachVR.Core
             // Register with ServiceLocator so HUDManager can find it
             ServiceLocator.Register(this);
 
+            // Removed forced Simulator creation to allow VR input in Editor
+            /*
 #if UNITY_EDITOR
             if (inputHandler != null)
             {
@@ -71,6 +73,7 @@ namespace NeuroReachVR.Core
                 inputHandler.SetInputMode(InputMode.Simulator);
             }
 #endif
+            */
             
             patientDataManager = FindFirstObjectByType<PatientDataManager>();
             if (patientDataManager == null)

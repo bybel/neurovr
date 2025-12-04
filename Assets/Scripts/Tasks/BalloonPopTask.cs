@@ -67,7 +67,7 @@ namespace NeuroReachVR.Tasks
         }
         
         [Header("Debug")]
-        [SerializeField] private bool showDebugLogs = true;
+        [SerializeField] private bool showDebugLogs = false;
         [SerializeField] private bool showOnScreenDebug = true;
         private float lastDebugLogTime;
         private string debugText = "";
@@ -95,6 +95,11 @@ namespace NeuroReachVR.Tasks
                        $"Position: {inputHandler.Position}\n" +
                        $"Active Balloons: {activeBalloons?.Count ?? 0}";
             
+            // 1. Spawn Balloons (Visuals first!)
+            SpawnBalloons();
+            CleanupPoppedBalloons();
+
+            // 2. Check Input
             if (!inputHandler.HasValidInput)
             {
                 if (showDebugLogs && Time.time - lastDebugLogTime > 2f)
@@ -106,8 +111,6 @@ namespace NeuroReachVR.Tasks
             }
             
             CheckBalloonPops();
-            SpawnBalloons();
-            CleanupPoppedBalloons();
         }
         
         // On-screen debug display
@@ -129,16 +132,20 @@ namespace NeuroReachVR.Tasks
         private void CheckBalloonPops()
         {
             Vector3 handPos = inputHandler.Position;
-            bool isPinching = inputHandler.IsPinching;
+            // Determine interaction state
+            // Hands: Require Pinch
+            // Stylus: Just proximity (Touch) is enough, or require press if desired
+            // Simulator: Require Click (Pinch)
+            bool isInteracting = inputHandler.IsPinching;
             
-            // Debug log every 0.5 seconds when pinching
-            if (showDebugLogs && isPinching && Time.time - lastDebugLogTime > 0.5f)
+            if (inputHandler.CurrentMode == InputMode.Stylus)
             {
-                Debug.Log($"[BalloonPopTask] Pinching at position: {handPos}, Active balloons: {activeBalloons.Count}");
-                lastDebugLogTime = Time.time;
+                // For Stylus, we treat "being close enough" as the interaction trigger (Touch)
+                // The actual distance check happens in balloon.CheckPop()
+                isInteracting = true; 
             }
             
-            if (!isPinching) return;
+            if (!isInteracting) return;
             
             foreach (var balloon in activeBalloons)
             {
@@ -202,14 +209,19 @@ namespace NeuroReachVR.Tasks
             
             if (cam != null)
             {
-                // Spawn in front of camera at the specified depth
-                basePosition = cam.transform.position + cam.transform.forward * 2f;
+                // Spawn in front of camera at REACHING distance (0.5m - 0.7m)
+                // Was 2.0f which is too far for direct interaction
+                basePosition = cam.transform.position + cam.transform.forward * 0.6f;
             }
             
-            // Add random offset
-            float xOffset = Random.Range(-spawnRadius, spawnRadius);
-            float yOffset = Random.Range(minSpawnHeight - 1f, maxSpawnHeight - 1f);
-            float zOffset = Random.Range(-0.5f, 0.5f);
+            // Add random offset (reduced radius for reaching)
+            float xOffset = Random.Range(-0.3f, 0.3f);
+            
+            // Fix Height: Spawn relative to eye level (Camera Y)
+            // Range: -0.3m (below eye) to +0.1m (slightly above)
+            float yOffset = Random.Range(-0.3f, 0.1f);
+            
+            float zOffset = Random.Range(-0.1f, 0.1f);
             
             Vector3 pos = basePosition + new Vector3(xOffset, yOffset, zOffset);
             

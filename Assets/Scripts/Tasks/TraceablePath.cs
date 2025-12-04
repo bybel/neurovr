@@ -51,8 +51,9 @@ namespace NeuroReachVR.Tasks
                 {
                     targetLineRenderer = gameObject.AddComponent<LineRenderer>();
                 }
-                ConfigureLineRenderer(targetLineRenderer, targetColor);
             }
+            // ALWAYS configure to ensure VR-safe shader
+            ConfigureLineRenderer(targetLineRenderer, targetColor);
 
             if (tracedLineRenderer == null && showRealTimeFeedback)
             {
@@ -69,6 +70,11 @@ namespace NeuroReachVR.Tasks
                     tracedObj.transform.SetParent(transform);
                     tracedLineRenderer = tracedObj.AddComponent<LineRenderer>();
                 }
+            }
+            
+            // ALWAYS configure if it exists
+            if (tracedLineRenderer != null)
+            {
                 ConfigureLineRenderer(tracedLineRenderer, correctColor);
             }
         }
@@ -93,26 +99,28 @@ namespace NeuroReachVR.Tasks
             renderer.startWidth = pathWidth;
             renderer.endWidth = pathWidth;
             
-            // Create material with fallback shaders (Shader.Find can return null in builds)
-            Shader shader = Shader.Find("Sprites/Default");
-            if (shader == null)
-                shader = Shader.Find("UI/Default");
-            if (shader == null)
-                shader = Shader.Find("Unlit/Color");
-            if (shader == null)
-                shader = Shader.Find("Standard");
+            // Force Mobile/Particles/Alpha Blended for robust VR visibility (Left Eye Fix)
+            Shader shader = Shader.Find("Mobile/Particles/Alpha Blended");
+            if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+            if (shader == null) shader = Shader.Find("Sprites/Default");
+            if (shader == null) shader = Shader.Find("UI/Default");
             
             if (shader != null)
             {
                 Material material = new Material(shader);
                 material.color = color;
+                
+                // Ensure it renders on top and in both eyes
+                // Mobile/Particles/Alpha Blended usually handles this well, but we can force it
+                material.renderQueue = 4000; // Overlay
+                material.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always); // Always render on top
+                
                 createdMaterials.Add(material);
                 renderer.material = material;
             }
             else
             {
-                Debug.LogWarning("[TraceablePath] Could not find any shader for LineRenderer. Using default material.");
-                // Use renderer's existing material or Unity's default
+                Debug.LogWarning("[TraceablePath] Could not find Sprites/Default shader!");
             }
             
             renderer.startColor = color;

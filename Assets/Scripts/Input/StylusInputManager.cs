@@ -21,12 +21,22 @@ namespace NeuroReachVR.Input
         private const string MX_INK_PRODUCT = "MX Ink";
         private const string STYLUS_DEVICE_NAME = "Logitech MX Ink";
         
+        // Calibration Offsets (Applied to raw device data)
+        private Vector3 calibrationPositionOffset = Vector3.zero;
+        private Vector3 calibrationRotationOffset = Vector3.zero;
+        
         private XRController stylusController;
         private UnityEngine.XR.InputDevice xrDevice;
         private bool isInitialized;
         private float lastPressure;
         private Vector3 lastPosition;
         private Quaternion lastRotation;
+        
+        public void SetCalibration(Vector3 posOffset, Vector3 rotOffset)
+        {
+            calibrationPositionOffset = posOffset;
+            calibrationRotationOffset = rotOffset;
+        }
         
         public bool IsAvailable => isInitialized && (stylusController != null || xrDevice.isValid);
         public bool IsTracking => GetIsTracking();
@@ -104,6 +114,19 @@ namespace NeuroReachVR.Input
                     return;
                 }
             }
+
+            // Method 4: Fallback to Right Controller if no specific Stylus found
+            // This allows testing with standard controllers if the Stylus driver isn't reporting correctly
+            var rightHandDevices = new List<UnityEngine.XR.InputDevice>();
+            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, rightHandDevices);
+            if (rightHandDevices.Count > 0)
+            {
+                xrDevice = rightHandDevices[0];
+                isInitialized = true;
+                if (debugLogging)
+                    Debug.Log($"[StylusInput] Fallback: Using Right Controller as Stylus: {xrDevice.name}");
+                return;
+            }
         }
         
         private bool IsLogitechStylus(UnityEngine.InputSystem.InputDevice device)
@@ -131,9 +154,12 @@ namespace NeuroReachVR.Input
             if (device.characteristics.HasFlag(InputDeviceCharacteristics.TrackedDevice))
             {
                 // Check name/role for stylus
+                // Relaxed check: Accept anything with "Stylus" or "Pen" or even "Controller" if we are desperate
+                // But for now, let's just make sure we catch the MX Ink even if name varies
                 return device.name.Contains("Stylus") || 
                        device.name.Contains("MX Ink") ||
-                       device.name.Contains("Logitech");
+                       device.name.Contains("Logitech") ||
+                       device.name.Contains("Pen");
             }
             
             return false;
@@ -161,52 +187,43 @@ namespace NeuroReachVR.Input
         
         private Vector3 GetStylusPosition()
         {
+            Vector3 rawPos = lastPosition;
+            Quaternion rawRot = lastRotation;
+
             // Try Input System
             if (stylusController != null)
             {
-                try
-                {
-                    return stylusController.devicePosition.ReadValue();
-                }
-                catch { }
+                try { rawPos = stylusController.devicePosition.ReadValue(); rawRot = stylusController.deviceRotation.ReadValue(); } catch { }
             }
-            
             // Try XR InputDevice
-            if (xrDevice.isValid)
+            else if (xrDevice.isValid)
             {
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 position))
-                    return position;
-                
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.trackingState, out InputTrackingState state))
-                {
-                    if (state.HasFlag(InputTrackingState.Position))
-                        return lastPosition;
-                }
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 p)) rawPos = p;
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion r)) rawRot = r;
             }
             
-            return lastPosition;
+            // Apply Calibration
+            // Tip Position = RawPos + (RawRot * Offset)
+            return rawPos + (GetStylusRotation() * calibrationPositionOffset);
         }
         
         private Quaternion GetStylusRotation()
         {
+            Quaternion rawRot = lastRotation;
+
             // Try Input System
             if (stylusController != null)
             {
-                try
-                {
-                    return stylusController.deviceRotation.ReadValue();
-                }
-                catch { }
+                try { rawRot = stylusController.deviceRotation.ReadValue(); } catch { }
             }
-            
             // Try XR InputDevice
-            if (xrDevice.isValid)
+            else if (xrDevice.isValid)
             {
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion rotation))
-                    return rotation;
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion r)) rawRot = r;
             }
             
-            return lastRotation;
+            // Apply Calibration
+            return rawRot * Quaternion.Euler(calibrationRotationOffset);
         }
         
         private float GetPressure()

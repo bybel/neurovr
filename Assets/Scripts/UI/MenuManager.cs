@@ -11,7 +11,7 @@ namespace NeuroReachVR.UI
     public class MenuManager : MonoBehaviour
     {
         [Header("Menu Configuration")]
-        [SerializeField] protected bool useAnimations = true;
+        [SerializeField] protected bool useAnimations = false; // DEBUG: Disabled animations to fix menu flow
         [SerializeField] protected bool enableMenuHistory = false;
 
         protected Dictionary<string, GameObject> menus = new Dictionary<string, GameObject>();
@@ -54,7 +54,7 @@ namespace NeuroReachVR.UI
         /// <summary>
         /// Show a menu by name (hides all others)
         /// </summary>
-        public void ShowMenu(string menuName, bool animated = true)
+        public virtual void ShowMenu(string menuName, bool animated = true)
         {
             Debug.Log($"[MenuManager] ShowMenu called: '{menuName}'");
             
@@ -78,7 +78,7 @@ namespace NeuroReachVR.UI
         /// <summary>
         /// Hide a specific menu
         /// </summary>
-        public void HideMenu(string menuName, bool animated = true)
+        public virtual void HideMenu(string menuName, bool animated = true)
         {
             if (!menus.ContainsKey(menuName))
             {
@@ -95,7 +95,7 @@ namespace NeuroReachVR.UI
         /// <summary>
         /// Hide all menus
         /// </summary>
-        public void HideAllMenus(bool animated = true)
+        public virtual void HideAllMenus(bool animated = true)
         {
             if (activeTransition != null)
                 StopCoroutine(activeTransition);
@@ -151,17 +151,26 @@ namespace NeuroReachVR.UI
                     Debug.LogWarning($"[MenuManager] No CanvasGroup on '{menuName}' - adding one");
                     canvasGroup = menuToShow.AddComponent<CanvasGroup>();
                 }
+                
+                // Ensure we start from invisible
                 canvasGroup.alpha = 0f;
                 menuToShow.SetActive(true);
+                
                 Debug.Log($"[MenuManager] Fading in '{menuName}'...");
                 yield return UIAnimator.FadeIn(canvasGroup);
+                
+                // FORCE ALPHA TO 1 just in case
+                canvasGroup.alpha = 1f;
             }
             else
             {
                 menuToShow.SetActive(true);
+                // Ensure alpha is 1 if we have a canvas group
+                var cg = menuToShow.GetComponent<CanvasGroup>();
+                if (cg != null) cg.alpha = 1f;
             }
             
-            Debug.Log($"[MenuManager] ShowMenuCoroutine completed for '{menuName}'");
+            Debug.Log($"[MenuManager] ShowMenuCoroutine completed for '{menuName}'. Active: {menuToShow.activeSelf}");
         }
 
         private IEnumerator HideMenuCoroutine(string menuName, bool animated)

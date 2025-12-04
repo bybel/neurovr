@@ -30,8 +30,8 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.5, y: 0.5, z: 0.5}
-  m_ConstrainProportionsScale: 0
+  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
+  m_ConstrainProportionsScale: 1
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
@@ -110,7 +110,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 1.0
+  m_Radius: 0.3
   m_Center: {x: 0, y: 0.5, z: 0}
 --- !u!114 &4016766715338745201
 MonoBehaviour:
@@ -124,6 +124,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 33fd26485c056486d90636865664e3a6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NeuroReachVR.Tasks.Balloon
-  popRadius: 0.5
+  popRadius: 0.1
   points: 10
   lifetime: 10
+  enableFloatingAnimation: 1
+  floatSpeed: 1
+  floatAmplitude: 0.1
+  enableColorVariation: 1
+  showDebugGizmos: 1
+  logDebugInfo: 1

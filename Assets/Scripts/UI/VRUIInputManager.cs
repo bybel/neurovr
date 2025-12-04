@@ -4,161 +4,208 @@ using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 using UnityEngine.XR;
+using System.Collections.Generic;
 
 namespace NeuroReachVR.UI
 {
     /// <summary>
-    /// VR UI Input Manager - Enables VR controller/trackpad interaction with UI buttons
-    /// Uses XR Ray Interactor pattern compatible with Meta XR SDK
+    /// Clean VR UI Input Manager for Meta Quest.
+    /// Supports: Logitech MX Ink (Stylus), Touch Controllers, Hand Tracking.
+    /// NO Gaze fallback. NO Simulator hacks.
     /// </summary>
     public class VRUIInputManager : MonoBehaviour
     {
-        [Header("VR Input Settings")]
+        [Header("Settings")]
         [SerializeField] private float raycastDistance = 10f;
         [SerializeField] private LayerMask uiLayerMask = -1;
-        [SerializeField] private bool enableHandTracking = true;
-        [SerializeField] private bool enableControllerTracking = true;
+        [SerializeField] private Color pointerColor = new Color(0.2f, 0.8f, 1f, 0.8f);
+        [SerializeField] private Vector3 pointerRotationOffset = new Vector3(60, 0, 0); // Default offset for Stylus
+        [SerializeField] private Vector3 pointerPositionOffset = new Vector3(0, 0.03f, 0.095f); // User-calibrated offset
         
-        [Header("Visual Feedback")]
+        [Header("Visuals")]
         [SerializeField] private LineRenderer pointerLine;
         [SerializeField] private GameObject pointerDot;
-        [SerializeField] private Color pointerColor = new Color(0.2f, 0.8f, 1f, 0.8f);
+
+        [Header("Calibration")]
+        [SerializeField] private bool forceRecommendedOffsets = true;
         
         private Camera mainCamera;
         private EventSystem eventSystem;
         private GraphicRaycaster graphicRaycaster;
         private Canvas worldCanvas;
         
+        // State
         private bool isPointerActive;
         private Vector3 pointerStart;
         private Vector3 pointerEnd;
         private GameObject currentHoveredObject;
         
-        // Cached lists to avoid per-frame allocations (GC pressure optimization)
-        private readonly System.Collections.Generic.List<RaycastResult> cachedRaycastResults = new System.Collections.Generic.List<RaycastResult>();
-        private readonly System.Collections.Generic.List<UnityEngine.XR.InputDevice> cachedInputDevices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
+        // Caching
+        private readonly List<RaycastResult> cachedRaycastResults = new List<RaycastResult>();
+        private readonly List<UnityEngine.XR.InputDevice> cachedInputDevices = new List<UnityEngine.XR.InputDevice>();
         private PointerEventData cachedPointerEventData;
-        
+        private GraphicRaycaster[] cachedRaycasters;
+        private float nextRaycasterRefreshTime;
+
         private void Awake()
         {
+            // Force user-calibrated offsets if enabled
+            if (forceRecommendedOffsets)
+            {
+                pointerRotationOffset = new Vector3(60, 0, 0);
+                pointerPositionOffset = new Vector3(0, 0.03f, 0.095f);
+            }
+
             mainCamera = Camera.main;
-            if (mainCamera == null)
-                mainCamera = UnityEngine.Object.FindFirstObjectByType<Camera>();
+            SetupEventSystem();
+            SetupVisuals();
             
-            eventSystem = UnityEngine.Object.FindFirstObjectByType<EventSystem>();
+            cachedPointerEventData = new PointerEventData(eventSystem);
+        }
+
+        private void SetupEventSystem()
+        {
+            eventSystem = FindFirstObjectByType<EventSystem>();
             if (eventSystem == null)
             {
                 GameObject es = new GameObject("EventSystem");
                 eventSystem = es.AddComponent<EventSystem>();
-                es.AddComponent<InputSystemUIInputModule>(); // Use new Input System module
+                es.AddComponent<InputSystemUIInputModule>();
             }
             else
             {
-                // Remove old StandaloneInputModule if present
-                var oldModule = eventSystem.GetComponent<StandaloneInputModule>();
-                if (oldModule != null)
+                // Ensure we use the new Input System module
+                if (eventSystem.GetComponent<InputSystemUIInputModule>() == null)
                 {
-                    Destroy(oldModule);
-                    if (eventSystem.GetComponent<InputSystemUIInputModule>() == null)
-                        eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
+                    // If old module exists, warn or replace? For now, just add new one if missing.
+                    // Ideally user should have set this up, but we ensure it works.
+                    var old = eventSystem.GetComponent<StandaloneInputModule>();
+                    if (old != null) Destroy(old);
+                    eventSystem.gameObject.AddComponent<InputSystemUIInputModule>();
                 }
             }
-            
-            // Find world space canvas
-            worldCanvas = UnityEngine.Object.FindFirstObjectByType<Canvas>();
-            if (worldCanvas != null)
-            {
-                graphicRaycaster = worldCanvas.GetComponent<GraphicRaycaster>();
-                if (graphicRaycaster == null)
-                    graphicRaycaster = worldCanvas.gameObject.AddComponent<GraphicRaycaster>();
-            }
-            
-            // Initialize cached PointerEventData to avoid per-frame allocation
-            cachedPointerEventData = new PointerEventData(eventSystem);
-            
-            SetupPointerVisual();
         }
-        
-        private void SetupPointerVisual()
+
+        private void SetupVisuals()
         {
             if (pointerLine == null)
             {
                 GameObject lineObj = new GameObject("VRPointerLine");
                 lineObj.transform.SetParent(transform);
                 pointerLine = lineObj.AddComponent<LineRenderer>();
-                pointerLine.material = new Material(Shader.Find("Sprites/Default"));
+                // Force Mobile/Particles/Alpha Blended for robust VR visibility
+                Shader shader = Shader.Find("Mobile/Particles/Alpha Blended");
+                if (shader == null) shader = Shader.Find("Particles/Standard Unlit");
+                if (shader == null) shader = Shader.Find("Sprites/Default");
+                
+                Material mat = new Material(shader);
+                mat.renderQueue = 4000; // Overlay
+                mat.SetInt("_ZTest", (int)UnityEngine.Rendering.CompareFunction.Always);
+                pointerLine.material = mat;
                 pointerLine.startColor = pointerColor;
                 pointerLine.endColor = pointerColor;
-                pointerLine.startWidth = 0.01f;
-                pointerLine.endWidth = 0.005f;
+                pointerLine.startWidth = 0.005f;
+                pointerLine.endWidth = 0.002f;
                 pointerLine.positionCount = 2;
                 pointerLine.enabled = false;
             }
-            
+
             if (pointerDot == null)
             {
                 pointerDot = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 pointerDot.name = "VRPointerDot";
                 pointerDot.transform.SetParent(transform);
-                pointerDot.transform.localScale = Vector3.one * 0.02f;
-                pointerDot.GetComponent<Renderer>().material.color = pointerColor;
-                pointerDot.SetActive(false);
-                
-                // Remove collider - it's just visual
+                pointerDot.transform.localScale = Vector3.one * 0.015f;
+                var rend = pointerDot.GetComponent<Renderer>();
+                if (rend) rend.material.color = pointerColor;
                 Destroy(pointerDot.GetComponent<Collider>());
+                pointerDot.SetActive(false);
             }
         }
-        
+
         private void Update()
         {
-            if (mainCamera == null || !mainCamera.isActiveAndEnabled)
+            if (mainCamera == null) mainCamera = Camera.main;
+
+            HandleInput();
+            UpdateVisuals();
+        }
+
+        private void HandleInput()
+        {
+            // 1. Determine Ray Origin & Direction based on Priority
+            // Priority: Stylus -> Right Controller -> Left Controller -> Hands
+            
+            Vector3 origin = Vector3.zero;
+            Vector3 direction = Vector3.zero;
+            bool foundDevice = false;
+
+            // Check Devices
+            if (TryGetDevice(InputDeviceCharacteristics.Controller, out origin, out direction)) // Generic Controller (covers Stylus/Right)
             {
-                mainCamera = Camera.main;
-                if (mainCamera == null) mainCamera = UnityEngine.Object.FindFirstObjectByType<Camera>();
+                foundDevice = true;
+            }
+            else if (TryGetDevice(InputDeviceCharacteristics.HandTracking, out origin, out direction)) // Hands
+            {
+                foundDevice = true;
             }
 
-            HandleVRInput();
-            UpdatePointerVisual();
-        }
-        
-        private GraphicRaycaster[] cachedRaycasters;
-        private float nextRaycasterRefreshTime;
-
-        private void HandleVRInput()
-        {
-            Vector3 rayOrigin = GetRayOrigin();
-            Vector3 rayDirection = GetRayDirection();
-            
-            if (rayDirection == Vector3.zero)
+            if (!foundDevice)
             {
                 isPointerActive = false;
                 return;
             }
-            
-            isPointerActive = true;
-            pointerStart = rayOrigin;
-            
-            // Raycast against UI - reuse cached PointerEventData to avoid GC allocation
-            cachedPointerEventData.Reset();
-#if UNITY_EDITOR
-            if (Mouse.current != null)
-            {
-                cachedPointerEventData.position = Mouse.current.position.ReadValue();
-            }
-            else
-            {
-                cachedPointerEventData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
-            }
-#else
-            cachedPointerEventData.position = new Vector2(Screen.width / 2, Screen.height / 2); // Center of screen
-#endif
 
-            // Reuse cached list - clear instead of allocating new (GC optimization)
-            cachedRaycastResults.Clear();
+            isPointerActive = true;
+            pointerStart = origin;
+
+            // 2. Raycast
+            PerformRaycast(origin, direction);
+        }
+
+        private bool TryGetDevice(InputDeviceCharacteristics characteristics, out Vector3 pos, out Vector3 dir)
+        {
+            pos = Vector3.zero;
+            dir = Vector3.zero;
             
-            // Find all active raycasters to ensure we hit any active UI
-            // Optimize: Cache raycasters and refresh every 1s
-            if (cachedRaycasters == null || Time.time >= nextRaycasterRefreshTime)
+            cachedInputDevices.Clear();
+            InputDevices.GetDevicesWithCharacteristics(characteristics, cachedInputDevices);
+
+            foreach (var device in cachedInputDevices)
+            {
+                // IGNORE Headset
+                if ((device.characteristics & InputDeviceCharacteristics.HeadMounted) != 0) continue;
+
+                // Check for Position & Rotation
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 p) &&
+                    device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion r))
+                {
+                    // If it's a controller, we might want to prioritize Right/Stylus over Left?
+                    // For simplicity, we take the first valid one, but we could sort.
+                    // Usually Right controller comes first or we can check characteristics.
+                    
+                    // Apply rotation offset
+                    Quaternion rot = r * Quaternion.Euler(pointerRotationOffset);
+                    
+                    // Apply position offset (rotated by device rotation)
+                    // If offset is local to the stylus (e.g. tip is forward), we rotate it
+                    pos = p + (rot * pointerPositionOffset);
+                    
+                    dir = rot * Vector3.forward;
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void PerformRaycast(Vector3 origin, Vector3 direction)
+        {
+            cachedPointerEventData.Reset();
+            cachedPointerEventData.position = new Vector2(Screen.width / 2, Screen.height / 2);
+
+            // UI Raycast
+            cachedRaycastResults.Clear();
+            if (Time.time >= nextRaycasterRefreshTime)
             {
                 cachedRaycasters = FindObjectsByType<GraphicRaycaster>(FindObjectsSortMode.None);
                 nextRaycasterRefreshTime = Time.time + 1f;
@@ -168,231 +215,102 @@ namespace NeuroReachVR.UI
             {
                 foreach (var caster in cachedRaycasters)
                 {
-                    if (caster != null && caster.gameObject.activeInHierarchy) // Check null/active in case it was destroyed/disabled since cache
-                    {
+                    if (caster && caster.gameObject.activeInHierarchy)
                         caster.Raycast(cachedPointerEventData, cachedRaycastResults);
-                    }
                 }
             }
-            
-            // Also do physics raycast for world space UI
-            Ray ray = new Ray(rayOrigin, rayDirection);
+
+            // Physics Raycast
+            Ray ray = new Ray(origin, direction);
             RaycastHit hit;
-            
-            bool hitUI = false;
-            GameObject hitObject = null;
-            
-            if (Physics.Raycast(ray, out hit, raycastDistance, uiLayerMask))
+            bool hitPhysics = Physics.Raycast(ray, out hit, raycastDistance, uiLayerMask);
+
+            // Determine Hit
+            GameObject hitObj = null;
+            Vector3 hitPoint = origin + direction * raycastDistance;
+            bool didHit = false;
+
+            // Check UI results first
+            foreach (var result in cachedRaycastResults)
             {
-                hitObject = hit.collider.gameObject;
-                Button button = hitObject.GetComponent<Button>();
-                if (button != null)
+                if (result.gameObject.GetComponent<Button>() || result.gameObject.GetComponent<Toggle>() || result.gameObject.GetComponent<Slider>())
                 {
-                    hitUI = true;
-                    pointerEnd = hit.point;
+                    hitObj = result.gameObject;
+                    hitPoint = result.worldPosition;
+                    didHit = true;
+                    break;
                 }
             }
-            
-            // Check UI raycast results
-            if (cachedRaycastResults.Count > 0)
+
+            // If no UI hit, check Physics
+            if (!didHit && hitPhysics)
             {
-                foreach (var result in cachedRaycastResults)
+                var btn = hit.collider.GetComponent<Button>();
+                if (btn)
                 {
-                    Button button = result.gameObject.GetComponent<Button>();
-                    if (button != null)
-                    {
-                        hitUI = true;
-                        hitObject = result.gameObject;
-                        pointerEnd = result.worldPosition;
-                        break;
-                    }
+                    hitObj = hit.collider.gameObject;
+                    hitPoint = hit.point;
+                    didHit = true;
                 }
             }
+
+            pointerEnd = hitPoint;
+
+            // Handle Interaction
+            HandleHover(hitObj);
             
-            if (!hitUI)
+            bool selectPressed = IsSelectPressed();
+            if (didHit && selectPressed)
             {
-                pointerEnd = rayOrigin + rayDirection * raycastDistance;
-            }
-            
-            // Handle hover
-            if (hitObject != currentHoveredObject)
-            {
-                if (currentHoveredObject != null)
+                if (!wasSelectPressed) // Only click on down
                 {
-                    OnPointerExit(currentHoveredObject);
-                }
-                
-                currentHoveredObject = hitObject;
-                
-                if (currentHoveredObject != null)
-                {
-                    OnPointerEnter(currentHoveredObject);
+                    Debug.Log($"[VRUIInputManager] Clicked on {hitObj.name}");
+                    OnPointerClick(hitObj);
                 }
             }
-            
-            // Handle click/select
-            if (hitUI && IsSelectPressed())
-            {
-                OnPointerClick(hitObject);
-            }
+            wasSelectPressed = selectPressed;
         }
-        
-        private Vector3 GetRayOrigin()
+
+        private bool wasSelectPressed = false;
+
+        private void HandleHover(GameObject hitObj)
         {
-#if UNITY_EDITOR
-            if (Mouse.current != null)
+            if (currentHoveredObject != hitObj)
             {
-                return mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue()).origin;
+                if (currentHoveredObject != null) ExecuteEvents.Execute(currentHoveredObject, cachedPointerEventData, ExecuteEvents.pointerExitHandler);
+                currentHoveredObject = hitObj;
+                if (currentHoveredObject != null) ExecuteEvents.Execute(currentHoveredObject, cachedPointerEventData, ExecuteEvents.pointerEnterHandler);
             }
-#endif
-            // Try to get controller/hand position
-            if (enableControllerTracking)
-            {
-                Vector3 controllerPos;
-                if (TryGetControllerPosition(out controllerPos))
-                    return controllerPos;
-            }
-            
-            if (enableHandTracking)
-            {
-                Vector3 handPos;
-                if (TryGetHandPosition(out handPos))
-                    return handPos;
-            }
-            
-            // Fallback to camera
-            return mainCamera != null ? mainCamera.transform.position : Vector3.zero;
         }
-        
-        private Vector3 GetRayDirection()
+
+        private void OnPointerClick(GameObject hitObj)
         {
-#if UNITY_EDITOR
-            if (Mouse.current != null)
+            if (hitObj != null)
             {
-                return mainCamera.ScreenPointToRay(Mouse.current.position.ReadValue()).direction;
+                ExecuteEvents.Execute(hitObj, cachedPointerEventData, ExecuteEvents.pointerClickHandler);
+                // Also try submit for buttons
+                ExecuteEvents.Execute(hitObj, cachedPointerEventData, ExecuteEvents.submitHandler);
             }
-#endif
-            // Try to get controller/hand forward
-            if (enableControllerTracking)
-            {
-                Quaternion controllerRot;
-                if (TryGetControllerRotation(out controllerRot))
-                    return controllerRot * Vector3.forward;
-            }
-            
-            if (enableHandTracking)
-            {
-                Quaternion handRot;
-                if (TryGetHandRotation(out handRot))
-                    return handRot * Vector3.forward;
-            }
-            
-            // Fallback to camera forward
-            return mainCamera != null ? mainCamera.transform.forward : Vector3.forward;
         }
-        
-        private bool TryGetControllerPosition(out Vector3 position)
-        {
-            position = Vector3.zero;
-            
-            // Reuse cached list to avoid GC allocation
-            cachedInputDevices.Clear();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, cachedInputDevices);
-            
-            if (cachedInputDevices.Count > 0)
-            {
-                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
-                    return true;
-            }
-            
-            return false;
-        }
-        
-        private bool TryGetControllerRotation(out Quaternion rotation)
-        {
-            rotation = Quaternion.identity;
-            
-            // Reuse cached list to avoid GC allocation
-            cachedInputDevices.Clear();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller | InputDeviceCharacteristics.Right, cachedInputDevices);
-            
-            if (cachedInputDevices.Count > 0)
-            {
-                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
-                    return true;
-            }
-            
-            return false;
-        }
-        
-        private bool TryGetHandPosition(out Vector3 position)
-        {
-            position = Vector3.zero;
-            
-            // Reuse cached list to avoid GC allocation
-            cachedInputDevices.Clear();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, cachedInputDevices);
-            
-            if (cachedInputDevices.Count > 0)
-            {
-                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position))
-                    return true;
-            }
-            
-            return false;
-        }
-        
-        private bool TryGetHandRotation(out Quaternion rotation)
-        {
-            rotation = Quaternion.identity;
-            
-            // Reuse cached list to avoid GC allocation
-            cachedInputDevices.Clear();
-            InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.HandTracking | InputDeviceCharacteristics.Right, cachedInputDevices);
-            
-            if (cachedInputDevices.Count > 0)
-            {
-                if (cachedInputDevices[0].TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation))
-                    return true;
-            }
-            
-            return false;
-        }
-        
+
         private bool IsSelectPressed()
         {
-#if UNITY_EDITOR
-            if (Mouse.current != null && Mouse.current.leftButton.isPressed)
-            {
-                return true;
-            }
-#endif
-            // Check for trigger/select button press - reuse cached list to avoid GC allocation
+            // Check all devices for Trigger/Select
             cachedInputDevices.Clear();
-            UnityEngine.XR.InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Controller, cachedInputDevices);
-            
+            InputDevices.GetDevices(cachedInputDevices);
             foreach (var device in cachedInputDevices)
             {
-                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool triggerPressed) && triggerPressed)
-                    return true;
-                
-                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool primaryPressed) && primaryPressed)
-                    return true;
+                if ((device.characteristics & InputDeviceCharacteristics.HeadMounted) != 0) continue;
+
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.triggerButton, out bool pressed) && pressed) return true;
+                if (device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool primary) && primary) return true;
             }
-            
-            // Check for hand pinch
-            if (enableHandTracking)
-            {
-                // Simplified - would need actual hand tracking API
-                // For now, use trigger as proxy
-            }
-            
             return false;
         }
-        
-        private void UpdatePointerVisual()
+
+        private void UpdateVisuals()
         {
-            if (pointerLine != null)
+            if (pointerLine)
             {
                 pointerLine.enabled = isPointerActive;
                 if (isPointerActive)
@@ -401,8 +319,8 @@ namespace NeuroReachVR.UI
                     pointerLine.SetPosition(1, pointerEnd);
                 }
             }
-            
-            if (pointerDot != null)
+
+            if (pointerDot)
             {
                 pointerDot.SetActive(isPointerActive);
                 if (isPointerActive)
@@ -411,45 +329,5 @@ namespace NeuroReachVR.UI
                 }
             }
         }
-        
-        private void OnPointerEnter(GameObject obj)
-        {
-            Button button = obj.GetComponent<Button>();
-            if (button != null && button.interactable)
-            {
-                // Trigger hover state - reuse cached PointerEventData to avoid GC allocation
-                ExecuteEvents.Execute(obj, cachedPointerEventData, ExecuteEvents.pointerEnterHandler);
-            }
-        }
-        
-        private void OnPointerExit(GameObject obj)
-        {
-            Button button = obj.GetComponent<Button>();
-            if (button != null)
-            {
-                // Reuse cached PointerEventData to avoid GC allocation
-                ExecuteEvents.Execute(obj, cachedPointerEventData, ExecuteEvents.pointerExitHandler);
-            }
-        }
-        
-        private float lastClickTime;
-        private const float CLICK_COOLDOWN = 0.15f; // 150ms - responsive for VR while preventing accidental double-clicks
-
-        private void OnPointerClick(GameObject obj)
-        {
-            if (Time.time - lastClickTime < CLICK_COOLDOWN) return;
-            lastClickTime = Time.time;
-
-            Button button = obj.GetComponentInParent<Button>();
-            if (button != null && button.interactable)
-            {
-                Debug.Log($"[VRUIInputManager] VRPointer clicked on: {button.name} (hit: {obj.name})");
-                // button.onClick.Invoke(); // Removed to prevent double-invocation
-                
-                // Trigger pointer click event - reuse cached PointerEventData to avoid GC allocation
-                ExecuteEvents.Execute(button.gameObject, cachedPointerEventData, ExecuteEvents.pointerClickHandler);
-            }
-        }
     }
 }
-

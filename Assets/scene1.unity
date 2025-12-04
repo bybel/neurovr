@@ -1027,7 +1027,7 @@ Camera:
   m_Depth: 0
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967287
+    m_Bits: 55
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0
@@ -3292,6 +3292,9 @@ MonoBehaviour:
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
+  OnTaskComplete:
+    m_PersistentCalls:
+      m_Calls: []
   pathPrefab: {fileID: 923556983480669128, guid: a35f2b9df8cc4411ca9a343b38df600b, type: 3}
   pathType: 0
   pathStart: {x: -0.5, y: 1, z: 1}
@@ -3636,7 +3639,10 @@ MonoBehaviour:
   patientLoginMenu: {fileID: 1104549483}
   selectTaskMenu: {fileID: 1201935573}
   difficultyMenu: {fileID: 1019438457}
-  startTrialMenu: {fileID: 1201935573}
+  startTrialMenu: {fileID: 1321374349}
+  taskCompletionMenu: {fileID: 0}
+  pauseMenu: {fileID: 0}
+  gameplayHUD: {fileID: 0}
   selectTaskButton: {fileID: 581130806}
   patientLoginButton: {fileID: 1919191960}
   quitButton: {fileID: 1968748520}
@@ -3652,24 +3658,17 @@ MonoBehaviour:
   hardButton: {fileID: 2099618480}
   difficultyBackButton: {fileID: 618923912}
   startTrialButton: {fileID: 401711590}
-  taskCompletionMenu: {fileID: 0}
-  completionTitleText: {fileID: 0}
-  finalScoreText: {fileID: 0}
-  sessionDurationText: {fileID: 0}
-  taskTypeText: {fileID: 0}
-  performanceRatingText: {fileID: 0}
-  additionalStatsText: {fileID: 0}
   retryTaskButton: {fileID: 0}
   backToMenuButton: {fileID: 0}
-  pauseMenu: {fileID: 0}
-  pauseMenuTitle: {fileID: 0}
-  pauseScoreText: {fileID: 0}
-  pauseTimeText: {fileID: 0}
   resumeButton: {fileID: 0}
   quitTaskButton: {fileID: 0}
   scoreText: {fileID: 1722683835}
   progressText: {fileID: 0}
   mainMenuTitleText: {fileID: 882479786}
+  completionTitleText: {fileID: 0}
+  finalScoreText: {fileID: 0}
+  sessionDurationText: {fileID: 0}
+  taskTypeText: {fileID: 0}
 --- !u!4 &926065773
 Transform:
   m_ObjectHideFlags: 0
@@ -4098,7 +4097,7 @@ RectTransform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1062870864}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 96.92}
+  m_LocalPosition: {x: 0, y: 0, z: 2}
   m_LocalScale: {x: 0.4, y: 0.4, z: 0.4}
   m_ConstrainProportionsScale: 1
   m_Children:
@@ -4108,7 +4107,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 0, y: 1}
   m_SizeDelta: {x: 1319.0001, y: 742.00006}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1088577895
@@ -5361,7 +5360,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   _monoscopic: 0
   _sharpenType: 0
-  _enableDynamicResolution: 1
+  _enableDynamicResolution: 0
   minDynamicResolutionScale: 1
   maxDynamicResolutionScale: 1
   quest2MinDynamicResolutionScale: 0.7
@@ -5413,6 +5412,7 @@ MonoBehaviour:
   requestEyeTrackingPermissionOnStartup: 0
   requestScenePermissionOnStartup: 1
   requestRecordAudioPermissionOnStartup: 0
+  requestPassthroughCameraAccessPermissionOnStartup: 0
   _localDimming: 1
   _trackingOriginType: 1
   usePositionTracking: 1
@@ -6396,11 +6396,14 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::NeuroReachVR.Tasks.SpiralTracingTask
   inputHandler: {fileID: 2127975783}
-  sessionDuration: 60
+  sessionDuration: 30
   autoStart: 0
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
+  OnTaskComplete:
+    m_PersistentCalls:
+      m_Calls: []
   pathPrefab: {fileID: 923556983480669128, guid: a35f2b9df8cc4411ca9a343b38df600b, type: 3}
   pathType: 0
   pathStart: {x: -0.5, y: 1, z: 1}
@@ -6410,8 +6413,8 @@ MonoBehaviour:
   pathSegments: 50
   minAccuracy: 0.7
   feedback: {fileID: 895701218}
-  spiralStartRadius: 0.2
-  spiralEndRadius: 0.8
+  spiralStartRadius: 0.14
+  spiralEndRadius: 0.11
   spiralTurns: 3
   tightnessFactor: 1
   minAngularVelocity: 0.5
@@ -8336,6 +8339,9 @@ MonoBehaviour:
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
+  OnTaskComplete:
+    m_PersistentCalls:
+      m_Calls: []
   balloonPrefab: {fileID: 1200888191488435251, guid: d8c01147466964fedaa2ffd34c05db80, type: 3}
   maxBalloons: 5
   spawnInterval: 2
@@ -8344,6 +8350,8 @@ MonoBehaviour:
   maxSpawnHeight: 2
   spawnRadius: 1.5
   feedback: {fileID: 895701218}
+  showDebugLogs: 1
+  showOnScreenDebug: 1
 --- !u!4 &2030482873
 Transform:
   m_ObjectHideFlags: 0
@@ -8392,11 +8400,10 @@ MonoBehaviour:
   uiLayerMask:
     serializedVersion: 2
     m_Bits: 4294967295
-  enableHandTracking: 1
-  enableControllerTracking: 1
+  pointerColor: {r: 0.2, g: 0.8, b: 1, a: 0.8}
+  pointerRotationOffset: {x: 60, y: 0, z: 0}
   pointerLine: {fileID: 0}
   pointerDot: {fileID: 0}
-  pointerColor: {r: 0.2, g: 0.8, b: 1, a: 0.8}
 --- !u!4 &2054565588
 Transform:
   m_ObjectHideFlags: 0
@@ -8791,8 +8798,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::NeuroReachVR.Input.InputHandler
   leftHandXR: {fileID: 1031422570}
   rightHandXR: {fileID: 966114639}
-  leftHandLegacy: {fileID: 0}
-  rightHandLegacy: {fileID: 0}
   simulatorInput: {fileID: 0}
   stylus: {fileID: 1814399857}
   preferredMode: 0

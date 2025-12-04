@@ -14,8 +14,6 @@ namespace NeuroReachVR.Input
         [SerializeField] private HandTrackingXRHands rightHandXR;
 
         [Header("Input Sources - Legacy Fallback")]
-        [SerializeField] private HandTrackingManager leftHandLegacy;
-        [SerializeField] private HandTrackingManager rightHandLegacy;
 
         [Header("Simulator Input")]
         [SerializeField] private SimulatorInput simulatorInput;
@@ -64,8 +62,7 @@ namespace NeuroReachVR.Input
                 if (activeInput is HandTrackingXRHands handSource)
                     return handSource.IsPinching;
 
-                if (activeInput is HandTrackingManager legacyHand)
-                    return legacyHand.IsPinching;
+
 
                 return false;
             }
@@ -84,8 +81,7 @@ namespace NeuroReachVR.Input
                 if (activeInput is HandTrackingXRHands handSource)
                     return handSource.PinchStrength;
 
-                if (activeInput is HandTrackingManager legacyHand)
-                    return legacyHand.PinchStrength;
+
 
                 return 0f;
             }
@@ -131,22 +127,11 @@ namespace NeuroReachVR.Input
 
         private void Start()
         {
-            #if UNITY_EDITOR
-            // In Editor, ALWAYS use Simulator mode for testing
-            if (simulatorInput != null)
-            {
-                Debug.Log("[InputHandler] Editor mode - forcing Simulator input");
-                preferredMode = InputMode.Simulator;
-                activeInput = simulatorInput;
-                currentMode = InputMode.Simulator;
-            }
-            else
-            {
-                SelectInputSource();
-            }
-            #else
+            // Force Auto mode to ensure we check for VR devices first, overriding Inspector defaults
+            preferredMode = InputMode.Auto;
+            
+            // Don't force Simulator in Editor anymore, allow VR input (Link/AirLink) to work
             SelectInputSource();
-            #endif
             
             Debug.Log($"[InputHandler] Started with mode: {currentMode}, HasValidInput: {HasValidInput}");
         }
@@ -156,6 +141,24 @@ namespace NeuroReachVR.Input
             // Auto-switch if current input becomes unavailable
             if (!HasValidInput && preferredMode == InputMode.Auto)
                 SelectInputSource();
+            
+            // RETRY VR DETECTION: If we are in Simulator mode (fallback), keep trying to find VR input
+            // This handles cases where controllers wake up AFTER the game starts
+            if (currentMode == InputMode.Simulator && preferredMode == InputMode.Auto && Time.frameCount % 60 == 0)
+            {
+                // Check if any VR device is now available
+                if (IsInputAvailable(InputMode.Stylus) || IsInputAvailable(InputMode.Hand))
+                {
+                    Debug.Log("[InputHandler] VR Input detected! Switching from Simulator...");
+                    SelectInputSource();
+                }
+            }
+                
+            // Debug: Log active input source periodically
+            if (Time.frameCount % 300 == 0) // Reduced frequency to 5s
+            {
+                Debug.Log($"[InputHandler] Active Source: {activeInput?.GetType().Name ?? "None"}, Mode: {currentMode}, Pos: {Position}");
+            }
         }
 
         private void SelectInputSource()
@@ -194,17 +197,28 @@ namespace NeuroReachVR.Input
                         activeInput = GetOtherHand();
                         currentMode = InputMode.Hand;
                     }
+                    // Fallback to Simulator if no VR input found (Last Resort)
                     #if UNITY_EDITOR
                     else if (IsValidInput(simulatorInput))
                     {
                         activeInput = simulatorInput;
                         currentMode = InputMode.Simulator;
+                        Debug.LogWarning("[InputHandler] VR Input not found - Falling back to Simulator");
                     }
                     #endif
                     else
                     {
                         activeInput = null;
                         currentMode = InputMode.None;
+                        
+                        // Debug: List all available devices to help diagnose why VR is failing
+                        if (Time.frameCount % 300 == 0)
+                        {
+                            var devices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
+                            UnityEngine.XR.InputDevices.GetDevices(devices);
+                            string deviceList = string.Join(", ", devices.ConvertAll(d => $"{d.name} ({d.characteristics})"));
+                            Debug.LogWarning($"[InputHandler] No valid input found! Available XR Devices: {deviceList}");
+                        }
                     }
                     break;
             }
@@ -219,8 +233,8 @@ namespace NeuroReachVR.Input
                     return xrHand;
             }
 
-            // Fallback to legacy
-            return preferredHand == Handedness.Right ? rightHandLegacy : leftHandLegacy;
+            // Fallback to null since legacy is removed
+            return null;
         }
 
         private IInputSource GetOtherHand()
@@ -232,8 +246,8 @@ namespace NeuroReachVR.Input
                     return xrHand;
             }
 
-            // Fallback to legacy
-            return preferredHand == Handedness.Right ? leftHandLegacy : rightHandLegacy;
+            // Fallback to null since legacy is removed
+            return null;
         }
 
         /// <summary>

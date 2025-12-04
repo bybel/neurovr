@@ -59,18 +59,24 @@ namespace NeuroReachVR.Tasks
         
         protected override void UpdateTask()
         {
-            // Support all input modes: Stylus, Simulator (mouse), Hand tracking
-            if (!inputHandler.HasValidInput)
-            {
-                Debug.LogWarning("[PathTracing] No valid input detected");
-                return;
-            }
-            
+            // 1. Ensure path exists (Visuals first!)
             if (currentPath == null)
             {
                 GenerateNewPath();
+                // Don't return here, allow input check to proceed
+            }
+            
+            // 2. Check Input
+            // Support all input modes: Stylus, Simulator (mouse), Hand tracking
+            if (!inputHandler.HasValidInput)
+            {
+                // Only log warning periodically to avoid spam
+                if (Time.frameCount % 300 == 0)
+                    Debug.LogWarning("[PathTracing] No valid input detected - cannot trace");
                 return;
             }
+            
+            if (currentPath == null) return; // Should be handled above, but safety check
             
             if (currentPath.IsComplete)
             {
@@ -95,6 +101,10 @@ namespace NeuroReachVR.Tasks
             List<Vector3> pathPoints = GeneratePathPoints();
             
             GameObject pathObj = Instantiate(pathPrefab.gameObject);
+            
+            // CRITICAL: Ensure path is in World Space and NOT parented to Camera or Task Manager
+            pathObj.transform.SetParent(null);
+            
             currentPath = pathObj.GetComponent<TraceablePath>();
             
             if (currentPath == null)

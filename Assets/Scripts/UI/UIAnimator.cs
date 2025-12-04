@@ -16,13 +16,13 @@ namespace NeuroReachVR.UI
         // Fade Animations
         public static IEnumerator FadeIn(CanvasGroup canvasGroup, float duration = -1f, EasingType easing = EasingType.EaseOut)
         {
-            if (duration < 0) duration = NeuroReachVR.Utils.NeuroVRConstants.UI_FADE_DURATION;
+            if (duration < 0) duration = 0.3f; // Hardcoded default
             yield return Fade(canvasGroup, 0f, 1f, duration, easing);
         }
 
         public static IEnumerator FadeOut(CanvasGroup canvasGroup, float duration = -1f, EasingType easing = EasingType.EaseIn)
         {
-            if (duration < 0) duration = NeuroReachVR.Utils.NeuroVRConstants.UI_FADE_DURATION;
+            if (duration < 0) duration = 0.3f; // Hardcoded default
             yield return Fade(canvasGroup, 1f, 0f, duration, easing);
         }
 
