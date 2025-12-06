@@ -18,7 +18,7 @@ namespace NeuroReachVR.Tasks
         [SerializeField] private float pathLength = 1f;
         
         [Header("Tracing Settings")]
-        [SerializeField] private float pathWidth = 0.1f;
+        [SerializeField] protected float pathWidth = 0.1f;
         [SerializeField] protected int pathSegments = 50;
         [SerializeField] protected float minAccuracy = 0.3f; // Lowered from 0.7 for easier gameplay
         
@@ -87,7 +87,7 @@ namespace NeuroReachVR.Tasks
             UpdateTracing();
         }
         
-        private void GenerateNewPath()
+        protected virtual void GenerateNewPath()
         {
             if (pathPrefab == null)
             {
@@ -115,6 +115,7 @@ namespace NeuroReachVR.Tasks
             }
             
             currentPath.InitializePath(pathPoints);
+            currentPath.SetPathWidth(pathWidth); // Apply the configured width (e.g. 0.02f for Spiral)
             
             Debug.Log($"[PathTracingTask] Generated path from {pathStart} to {pathEnd} with {pathPoints.Count} points");
             
@@ -126,7 +127,7 @@ namespace NeuroReachVR.Tasks
         /// Positions the path start and end points in front of the camera
         /// Uses the same projection method as SimulatorInput for accurate mouse interaction
         /// </summary>
-        private void PositionPathInFrontOfCamera()
+        protected void PositionPathInFrontOfCamera()
         {
             Camera mainCam = Camera.main;
             if (mainCam == null) return;

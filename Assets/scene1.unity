@@ -1416,7 +1416,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: 31}
+  m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 160, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &401711590
@@ -3665,6 +3665,9 @@ MonoBehaviour:
   scoreText: {fileID: 1722683835}
   progressText: {fileID: 0}
   mainMenuTitleText: {fileID: 882479786}
+  stylusPositionOffset: {x: 0, y: 0, z: 0}
+  stylusRotationOffset: {x: 60, y: 0, z: 0}
+  stylusColor: {r: 0.9, g: 0.9, b: 0.9, a: 1}
   completionTitleText: {fileID: 0}
   finalScoreText: {fileID: 0}
   sessionDurationText: {fileID: 0}
@@ -4107,7 +4110,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 0, y: 1}
+  m_AnchoredPosition: {x: 0, y: 2}
   m_SizeDelta: {x: 1319.0001, y: 742.00006}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &1088577895
@@ -6413,12 +6416,13 @@ MonoBehaviour:
   pathSegments: 50
   minAccuracy: 0.7
   feedback: {fileID: 895701218}
-  spiralStartRadius: 0.14
-  spiralEndRadius: 0.11
+  spiralStartRadius: 0.2
+  spiralEndRadius: 0.3
   spiralTurns: 3
   tightnessFactor: 1
   minAngularVelocity: 0.5
   maxAngularVelocity: 2
+  calibrationManager: {fileID: 0}
 --- !u!4 &1599232958
 Transform:
   m_ObjectHideFlags: 0
@@ -8402,8 +8406,10 @@ MonoBehaviour:
     m_Bits: 4294967295
   pointerColor: {r: 0.2, g: 0.8, b: 1, a: 0.8}
   pointerRotationOffset: {x: 60, y: 0, z: 0}
+  pointerPositionOffset: {x: 0, y: 0.03, z: 0.095}
   pointerLine: {fileID: 0}
   pointerDot: {fileID: 0}
+  forceRecommendedOffsets: 1
 --- !u!4 &2054565588
 Transform:
   m_ObjectHideFlags: 0

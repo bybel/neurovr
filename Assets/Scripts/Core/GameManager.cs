@@ -140,6 +140,9 @@ namespace NeuroReachVR.Core
             currentState = GameState.MainMenu;
             ValidateSystems();
             ConnectSystems();
+            
+            // Force Passthrough ON at startup
+            // UpdatePassthroughState removed to restore original behavior 
         }
         
         private void ValidateSystems()
@@ -304,7 +307,11 @@ namespace NeuroReachVR.Core
         {
             if (adaptiveController != null)
                 adaptiveController.SetDifficultyLevel(level);
+                
+            // UpdatePassthroughState(level); // Removed
         }
+        
+        // Removed UpdatePassthroughState to restore original scene camera settings.
         
         private BaseTask GetTask(TaskType taskType)
         {

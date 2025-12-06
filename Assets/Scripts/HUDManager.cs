@@ -330,12 +330,22 @@ public class HUDManager : MenuManager
         float distance = 1.0f; // 1.0 meter away (closer is better for readability)
         float heightOffset = -0.1f; // Slightly below eye level
 
-        Vector3 targetPos = mainCamera.transform.position + (mainCamera.transform.forward * distance);
-        targetPos.y = mainCamera.transform.position.y + heightOffset;
+        Vector3 camPos = mainCamera.transform.position;
+        
+        // Fix: If camera is on floor (e.g. headset sleeping or initializing), force a default height
+        if (camPos.y < 0.5f)
+        {
+            camPos.y = 1.6f; // Assume standing height
+        }
+
+        Vector3 targetPos = camPos + (mainCamera.transform.forward * distance);
+        targetPos.y = camPos.y + heightOffset;
 
         // Keep menu upright, but facing the user
-        Vector3 directionToUser = mainCamera.transform.position - targetPos;
+        Vector3 directionToUser = camPos - targetPos;
         directionToUser.y = 0; // Flatten rotation so it doesn't tilt up/down
+        if (directionToUser.sqrMagnitude < 0.001f) directionToUser = Vector3.back; // Safety
+        
         Quaternion targetRot = Quaternion.LookRotation(-directionToUser);
 
         menuObj.transform.position = targetPos;
@@ -412,7 +422,145 @@ public class HUDManager : MenuManager
     {
         selectedDifficulty = difficulty;
         Debug.Log($"[HUDManager] Selected Difficulty: {difficulty}");
+        
+        // Update Start Menu based on difficulty
+        UpdateStartMenuState();
+        
         ShowMenu("startTrial");
+    }
+
+    private void UpdateStartMenuState()
+    {
+        if (startTrialButton == null) return;
+        
+        TextMeshProUGUI btnText = startTrialButton.GetComponentInChildren<TextMeshProUGUI>();
+        
+        // Remove old listeners
+        startTrialButton.onClick.RemoveAllListeners();
+
+        // Check for existing Recalibrate button (created dynamically)
+        Transform buttonContainer = startTrialButton.transform.parent;
+        Transform recalibrateBtnTrans = buttonContainer.Find("RecalibrateButton");
+        GameObject recalibrateBtnObj = recalibrateBtnTrans != null ? recalibrateBtnTrans.gameObject : null;
+
+        if (selectedTask == TaskType.SpiralTracing && selectedDifficulty == DifficultyLevel.Easy)
+        {
+            // Check if already calibrated
+            var calibManager = FindFirstObjectByType<NeuroReachVR.Input.TableCalibrationManager>();
+            bool isCalibrated = calibManager != null && calibManager.IsCalibrated;
+            
+            if (isCalibrated)
+            {
+                if (btnText) btnText.text = "Start Trial";
+                startTrialButton.onClick.AddListener(StartTrial);
+                
+                // Show Recalibrate Button
+                if (recalibrateBtnObj == null)
+                {
+                    recalibrateBtnObj = CreateRecalibrateButton(buttonContainer);
+                }
+                recalibrateBtnObj.SetActive(true);
+            }
+            else
+            {
+                if (btnText) btnText.text = "Calibrate Table";
+                startTrialButton.onClick.AddListener(StartCalibrationFlow);
+                
+                // Hide Recalibrate Button (since main button is Calibrate)
+                if (recalibrateBtnObj != null) recalibrateBtnObj.SetActive(false);
+            }
+        }
+        else
+        {
+            // Standard flow
+            if (btnText) btnText.text = "Start Trial";
+            startTrialButton.onClick.AddListener(StartTrial);
+            
+            // Hide Recalibrate Button
+            if (recalibrateBtnObj != null) recalibrateBtnObj.SetActive(false);
+        }
+    }
+    
+    private GameObject CreateRecalibrateButton(Transform parent)
+    {
+        // Clone the start button to keep style
+        GameObject btnObj = Instantiate(startTrialButton.gameObject, parent);
+        btnObj.name = "RecalibrateButton";
+        
+        // Fix: Offset position to avoid overlap (assuming no LayoutGroup)
+        RectTransform rect = btnObj.GetComponent<RectTransform>();
+        RectTransform originalRect = startTrialButton.GetComponent<RectTransform>();
+        
+        if (rect && originalRect)
+        {
+            // Move down by height + spacing
+            float height = originalRect.rect.height;
+            if (height == 0) height = 60f; // Default fallback
+            
+            Vector3 pos = startTrialButton.transform.localPosition;
+            pos.y -= (height + 20f); // Move down
+            rect.localPosition = pos;
+        }
+        
+        Button btn = btnObj.GetComponent<Button>();
+        btn.onClick.RemoveAllListeners();
+        btn.onClick.AddListener(StartCalibrationFlow);
+        
+        TextMeshProUGUI txt = btnObj.GetComponentInChildren<TextMeshProUGUI>();
+        if (txt) txt.text = "Recalibrate";
+        
+        // Change color to indicate secondary action
+        // Make it distinct but readable
+        Image img = btnObj.GetComponent<Image>();
+        if (img) img.color = new Color(0.2f, 0.2f, 0.2f); // Dark Grey
+        
+        return btnObj;
+    }
+
+    private void StartCalibrationFlow()
+    {
+        Debug.Log("[HUDManager] Starting Calibration Flow from Menu...");
+        
+        var calibManager = FindFirstObjectByType<NeuroReachVR.Input.TableCalibrationManager>();
+        if (calibManager == null)
+        {
+            GameObject cmObj = new GameObject("TableCalibrationManager");
+            calibManager = cmObj.AddComponent<NeuroReachVR.Input.TableCalibrationManager>();
+        }
+        
+        // Subscribe to completion
+        calibManager.OnCalibrationComplete -= OnMenuCalibrationComplete; // Safety remove
+        calibManager.OnCalibrationComplete += OnMenuCalibrationComplete;
+        
+        // Start Calibration
+        calibManager.StartCalibration();
+        
+        // Update UI feedback
+        if (startTrialButton)
+        {
+            TextMeshProUGUI btnText = startTrialButton.GetComponentInChildren<TextMeshProUGUI>();
+            if (btnText) btnText.text = "Tracing...";
+            startTrialButton.interactable = false; // Disable button while calibrating
+        }
+    }
+
+    private void OnMenuCalibrationComplete()
+    {
+        Debug.Log("[HUDManager] Menu Calibration Complete!");
+        
+        // Re-enable button and set to Start
+        if (startTrialButton)
+        {
+            startTrialButton.interactable = true;
+            UpdateStartMenuState(); // This will switch it to "Start Trial"
+        }
+        
+        // Unsubscribe
+        var calibManager = FindFirstObjectByType<NeuroReachVR.Input.TableCalibrationManager>();
+        if (calibManager != null)
+        {
+            calibManager.OnCalibrationComplete -= OnMenuCalibrationComplete;
+        }
     }
 
     private void StartTrial()
@@ -421,9 +569,6 @@ public class HUDManager : MenuManager
         HideAllMenus();
         if (gameplayHUD) gameplayHUD.SetActive(true);
         
-        // Position Gameplay HUD attached to camera or fixed in space?
-        // Usually fixed in space is better for VR comfort, but for HUDs maybe attached?
-        // For now, let's position it once in front.
         PositionMenuInFrontOfUser(gameplayHUD);
 
         gameManager.SetDifficulty(selectedDifficulty);

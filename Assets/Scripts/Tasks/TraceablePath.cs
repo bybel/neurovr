@@ -311,7 +311,7 @@ namespace NeuroReachVR.Tasks
 
         public void SetPathWidth(float width)
         {
-            pathWidth = Mathf.Max(0.01f, width);
+            pathWidth = Mathf.Max(0.005f, width); // Allow smaller width
 
             if (targetLineRenderer != null)
             {
@@ -321,9 +321,19 @@ namespace NeuroReachVR.Tasks
 
             if (tracedLineRenderer != null)
             {
-                tracedLineRenderer.startWidth = pathWidth * 0.8f; // Slightly thinner
-                tracedLineRenderer.endWidth = pathWidth * 0.8f;
+                // Make the user's trace thinner than the target path for better precision visibility
+                float traceWidth = pathWidth * 0.5f; 
+                tracedLineRenderer.startWidth = traceWidth;
+                tracedLineRenderer.endWidth = traceWidth;
             }
+        }
+        public void SetAlignment(LineAlignment alignment)
+        {
+            if (targetLineRenderer != null)
+                targetLineRenderer.alignment = alignment;
+                
+            if (tracedLineRenderer != null)
+                tracedLineRenderer.alignment = alignment;
         }
     }
 }

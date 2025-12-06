@@ -172,7 +172,22 @@ namespace NeuroReachVR.Input
             // Try Input System first
             if (stylusController != null)
             {
-                return stylusController.isTracked.isPressed;
+                try
+                {
+                    // Safety check: Ensure device is actually added to the system
+                    if (!stylusController.added) return false;
+
+                    var isTrackedControl = stylusController.isTracked;
+                    if (isTrackedControl != null)
+                    {
+                        return isTrackedControl.isPressed;
+                    }
+                }
+                catch (System.Exception)
+                {
+                    // Suppress errors if device is not ready
+                    return false;
+                }
             }
             
             // Try XR InputDevice
@@ -277,22 +292,28 @@ namespace NeuroReachVR.Input
         
         private bool GetButtonState()
         {
-            // Check primary button (stylus tip contact)
+            // Check primary button (stylus tip contact or front button)
             if (stylusController != null)
             {
                 try
                 {
-                    var button = stylusController.TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("primaryButton");
-                    if (button != null && button.isPressed)
-                        return true;
+                    var primary = stylusController.TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("primaryButton");
+                    if (primary != null && primary.isPressed) return true;
+                    
+                    var secondary = stylusController.TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("secondaryButton");
+                    if (secondary != null && secondary.isPressed) return true;
+                    
+                    var grip = stylusController.TryGetChildControl<UnityEngine.InputSystem.Controls.ButtonControl>("gripButton");
+                    if (grip != null && grip.isPressed) return true;
                 }
                 catch { }
             }
             
             if (xrDevice.isValid)
             {
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool pressed))
-                    return pressed;
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.primaryButton, out bool primary) && primary) return true;
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.secondaryButton, out bool secondary) && secondary) return true;
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool grip) && grip) return true;
             }
             
             // Pressure threshold also indicates button press
