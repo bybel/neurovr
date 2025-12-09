@@ -18,6 +18,8 @@ namespace NeuroReachVR.Tasks
         [SerializeField] private float floatSpeed = 1f;
         [SerializeField] private float floatAmplitude = 0.1f;
         [SerializeField] private bool enableColorVariation = true;
+        [SerializeField] private Color startColor = Color.blue;
+        [SerializeField] private Color endColor = Color.red;
         [Header("Debug")]
         [SerializeField] private bool showDebugGizmos = true;
         [SerializeField] private bool logDebugInfo = true;
@@ -74,6 +76,8 @@ namespace NeuroReachVR.Tasks
                 float yOffset = Mathf.Sin(Time.time * floatSpeed + spawnTime) * floatAmplitude;
                 transform.position = originalPosition + Vector3.up * yOffset;
             }
+
+            UpdateColorOverLifetime();
         }
 
         public bool CheckPop(Vector3 handPosition)
@@ -119,30 +123,7 @@ namespace NeuroReachVR.Tasks
             if (balloonCollider != null)
                 balloonCollider.enabled = true;
             
-            // Apply random color variation using MaterialPropertyBlock (works with URP)
-            if (enableColorVariation && balloonRenderer != null)
-            {
-                Color randomColor = balloonColors[Random.Range(0, balloonColors.Length)];
-                
-                
-                // Try multiple shader property names for compatibility
-                balloonRenderer.GetPropertyBlock(propertyBlock);
-                propertyBlock.SetColor("_BaseColor", randomColor);      // URP Lit
-                propertyBlock.SetColor("_Color", randomColor);          // Standard
-                propertyBlock.SetColor("_MainColor", randomColor);      // Custom shaders
-                balloonRenderer.SetPropertyBlock(propertyBlock);
-                
-                // Also try direct material color as fallback
-                if (balloonRenderer.material != null)
-                {
-                    balloonRenderer.material.SetColor("_BaseColor", randomColor);
-                    balloonRenderer.material.SetColor("_Color", randomColor);
-                    balloonRenderer.material.color = randomColor;
-                }
-                
-                if (logDebugInfo)
-                    Debug.Log($"[Balloon] Set color to {randomColor} on {gameObject.name}");
-            }
+            UpdateColorOverLifetime(0f);
             
             // Store position for floating animation
             originalPosition = transform.position;
@@ -173,6 +154,28 @@ namespace NeuroReachVR.Tasks
             // Draw larger pop radius when selected
             Gizmos.color = Color.yellow;
             Gizmos.DrawWireSphere(transform.position, popRadius);
+        }
+
+        private void UpdateColorOverLifetime(float? overrideT = null)
+        {
+            if (!enableColorVariation || balloonRenderer == null)
+                return;
+
+            float t = overrideT.HasValue ? Mathf.Clamp01(overrideT.Value) : Mathf.Clamp01(Age / lifetime);
+            Color currentColor = Color.Lerp(startColor, endColor, t);
+
+            balloonRenderer.GetPropertyBlock(propertyBlock);
+            propertyBlock.SetColor("_BaseColor", currentColor);      // URP Lit
+            propertyBlock.SetColor("_Color", currentColor);          // Standard
+            propertyBlock.SetColor("_MainColor", currentColor);      // Custom shaders
+            balloonRenderer.SetPropertyBlock(propertyBlock);
+
+            if (balloonRenderer.material != null)
+            {
+                balloonRenderer.material.SetColor("_BaseColor", currentColor);
+                balloonRenderer.material.SetColor("_Color", currentColor);
+                balloonRenderer.material.color = currentColor;
+            }
         }
     }
 }
