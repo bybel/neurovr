@@ -68,7 +68,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: feef3c0b833730c4fadccf4eb1ecdbe6, type: 2}
+  - {fileID: 0}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -110,7 +110,7 @@ SphereCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Radius: 1.0
+  m_Radius: 1
   m_Center: {x: 0, y: 0.5, z: 0}
 --- !u!114 &4016766715338745201
 MonoBehaviour:
@@ -127,3 +127,9 @@ MonoBehaviour:
   popRadius: 0.5
   points: 10
   lifetime: 10
+  enableFloatingAnimation: 1
+  floatSpeed: 1
+  floatAmplitude: 0.1
+  enableColorVariation: 1
+  showDebugGizmos: 1
+  logDebugInfo: 1

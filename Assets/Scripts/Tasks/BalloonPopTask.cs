@@ -23,6 +23,9 @@ namespace NeuroReachVR.Tasks
         
         [Header("Feedback")]
         [SerializeField] private TaskFeedback feedback;
+        [SerializeField] private GameObject explosionPrefab;
+        [SerializeField] private float explosionLifetime = 2f;
+        [SerializeField] private Vector3 explosionOffset = Vector3.zero;
         
         private const int POOL_MULTIPLIER = 2; // Pool size = maxBalloons * multiplier
         
@@ -155,6 +158,7 @@ namespace NeuroReachVR.Tasks
             balloonsPopped++;
             AddScore(balloon.Points);
             feedback?.PlaySuccess(balloon.transform.position);
+            PlayExplosionEffect(balloon.transform.position);
 
             // Report successful attempt (reaction time = balloon age)
             ReportAttempt(balloon.Age, true, 1f);
@@ -191,6 +195,7 @@ namespace NeuroReachVR.Tasks
             Vector3 spawnPos = GetRandomSpawnPosition();
             balloon.transform.position = spawnPos;
             balloon.ResetBalloon();
+            balloon.gameObject.SetActive(true);
             activeBalloons.Add(balloon);
         }
         
@@ -239,7 +244,8 @@ namespace NeuroReachVR.Tasks
             }
 
             Balloon balloon = balloonPool.Dequeue();
-            balloon.gameObject.SetActive(true);
+            if (balloon.gameObject.activeSelf)
+                balloon.gameObject.SetActive(false);
             return balloon;
         }
         
@@ -250,6 +256,23 @@ namespace NeuroReachVR.Tasks
             activeBalloons.Remove(balloon);
             balloon.gameObject.SetActive(false);
             balloonPool.Enqueue(balloon);
+        }
+
+        private void PlayExplosionEffect(Vector3 position)
+        {
+            if (explosionPrefab == null) return;
+
+            var fxInstance = Instantiate(explosionPrefab, position + explosionOffset, Quaternion.identity);
+
+            var particleSystem = fxInstance.GetComponent<ParticleSystem>();
+            if (particleSystem != null)
+            {
+                particleSystem.Clear(true);
+                particleSystem.Play(true);
+            }
+
+            if (explosionLifetime > 0f)
+                Destroy(fxInstance, explosionLifetime);
         }
 
         private void OnDestroy()
@@ -302,4 +325,3 @@ namespace NeuroReachVR.Tasks
         }
     }
 }
-
