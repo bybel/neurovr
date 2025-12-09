@@ -11,7 +11,6 @@ namespace NeuroReachVR.Tasks
     {
         [Header("Balloon Settings")]
         [SerializeField] private float popRadius = 0.5f;
-        [SerializeField] private int points = 10;
         [SerializeField] private float lifetime = 10f;
         
         [Header("Visual Effects")]
@@ -45,8 +44,8 @@ namespace NeuroReachVR.Tasks
         };
 
         public bool IsPopped => isPopped;
-        public int Points => points;
         public float Age => Time.time - spawnTime;
+        public float Lifetime => lifetime;
         public System.Action<Balloon> OnLifetimeExpired;
 
         private void Awake()

@@ -156,7 +156,8 @@ namespace NeuroReachVR.Tasks
         private void OnBalloonPopped(Balloon balloon)
         {
             balloonsPopped++;
-            AddScore(balloon.Points);
+            int pointsEarned = CalculateBalloonScore(balloon);
+            AddScore(pointsEarned);
             feedback?.PlaySuccess(balloon.transform.position);
             PlayExplosionEffect(balloon.transform.position);
 
@@ -164,6 +165,17 @@ namespace NeuroReachVR.Tasks
             ReportAttempt(balloon.Age, true, 1f);
 
             ReturnToPool(balloon);
+        }
+
+        private int CalculateBalloonScore(Balloon balloon)
+        {
+            if (balloon == null || balloon.Lifetime <= 0f)
+                return 0;
+
+            float lifetimeFraction = Mathf.Clamp01(balloon.Age / balloon.Lifetime);
+            int penaltySteps = Mathf.FloorToInt(lifetimeFraction * 10f);
+            int score = 10 - penaltySteps;
+            return Mathf.Max(0, score);
         }
 
         private void OnBalloonLifetimeExpired(Balloon balloon)
