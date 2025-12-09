@@ -19,7 +19,6 @@ namespace NeuroReachVR.Tasks
         [SerializeField] private float floatSpeed = 1f;
         [SerializeField] private float floatAmplitude = 0.1f;
         [SerializeField] private bool enableColorVariation = true;
-        
         [Header("Debug")]
         [SerializeField] private bool showDebugGizmos = true;
         [SerializeField] private bool logDebugInfo = true;
@@ -109,7 +108,6 @@ namespace NeuroReachVR.Tasks
             
             if (balloonCollider != null)
                 balloonCollider.enabled = false;
-            
             gameObject.SetActive(false);
         }
 
@@ -126,6 +124,7 @@ namespace NeuroReachVR.Tasks
             if (enableColorVariation && balloonRenderer != null)
             {
                 Color randomColor = balloonColors[Random.Range(0, balloonColors.Length)];
+                
                 
                 // Try multiple shader property names for compatibility
                 balloonRenderer.GetPropertyBlock(propertyBlock);
@@ -145,8 +144,6 @@ namespace NeuroReachVR.Tasks
                 if (logDebugInfo)
                     Debug.Log($"[Balloon] Set color to {randomColor} on {gameObject.name}");
             }
-            
-            gameObject.SetActive(true);
             
             // Store position for floating animation
             originalPosition = transform.position;
