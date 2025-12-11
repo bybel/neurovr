@@ -3664,6 +3664,7 @@ MonoBehaviour:
   quitTaskButton: {fileID: 0}
   scoreText: {fileID: 1722683835}
   progressText: {fileID: 0}
+  gameplayHUD: {fileID: 0}
   mainMenuTitleText: {fileID: 882479786}
   stylusPositionOffset: {x: 0, y: 0, z: 0}
   stylusRotationOffset: {x: 60, y: 0, z: 0}
@@ -8354,6 +8355,9 @@ MonoBehaviour:
   maxSpawnHeight: 2
   spawnRadius: 1.5
   feedback: {fileID: 895701218}
+  explosionPrefab: {fileID: 8525990746615576120, guid: b85d21f3b8fed714bacf0c4fd50fa512, type: 3}
+  explosionLifetime: 2
+  explosionOffset: {x: 0, y: 0, z: 0}
   showDebugLogs: 1
   showOnScreenDebug: 1
 --- !u!4 &2030482873
