@@ -3292,6 +3292,9 @@ MonoBehaviour:
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
+  OnTaskComplete:
+    m_PersistentCalls:
+      m_Calls: []
   pathPrefab: {fileID: 923556983480669128, guid: a35f2b9df8cc4411ca9a343b38df600b, type: 3}
   pathType: 0
   pathStart: {x: -0.5, y: 1, z: 1}
@@ -3669,6 +3672,7 @@ MonoBehaviour:
   quitTaskButton: {fileID: 0}
   scoreText: {fileID: 1722683835}
   progressText: {fileID: 0}
+  gameplayHUD: {fileID: 0}
   mainMenuTitleText: {fileID: 882479786}
 --- !u!4 &926065773
 Transform:
@@ -6401,6 +6405,9 @@ MonoBehaviour:
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
+  OnTaskComplete:
+    m_PersistentCalls:
+      m_Calls: []
   pathPrefab: {fileID: 923556983480669128, guid: a35f2b9df8cc4411ca9a343b38df600b, type: 3}
   pathType: 0
   pathStart: {x: -0.5, y: 1, z: 1}
@@ -8336,6 +8343,9 @@ MonoBehaviour:
   adaptiveController: {fileID: 1508143750}
   dataLogger: {fileID: 1163532020}
   kinematicCollector: {fileID: 1958746997}
+  OnTaskComplete:
+    m_PersistentCalls:
+      m_Calls: []
   balloonPrefab: {fileID: 1200888191488435251, guid: d8c01147466964fedaa2ffd34c05db80, type: 3}
   maxBalloons: 5
   spawnInterval: 2
@@ -8344,6 +8354,11 @@ MonoBehaviour:
   maxSpawnHeight: 2
   spawnRadius: 1.5
   feedback: {fileID: 895701218}
+  explosionPrefab: {fileID: 8525990746615576120, guid: b85d21f3b8fed714bacf0c4fd50fa512, type: 3}
+  explosionLifetime: 2
+  explosionOffset: {x: 0, y: 0, z: 0}
+  showDebugLogs: 1
+  showOnScreenDebug: 1
 --- !u!4 &2030482873
 Transform:
   m_ObjectHideFlags: 0
