@@ -39,6 +39,7 @@ namespace NeuroReachVR.UI
         private Vector3 pointerStart;
         private Vector3 pointerEnd;
         private GameObject currentHoveredObject;
+        private bool pointerAllowed = true; // Default to true
         
         // Caching
         private readonly List<RaycastResult> cachedRaycastResults = new List<RaycastResult>();
@@ -156,11 +157,75 @@ namespace NeuroReachVR.UI
                 return;
             }
 
-            isPointerActive = true;
+            if (!foundDevice)
+            {
+                // If force-disabled externally, stay disabled.
+                // Otherwise, it just means no device found this frame.
+                if (isPointerActive) 
+                {
+                    // check if we should auto-disable? 
+                    // No, let's keep isPointerActive as the "intent" flag?
+                    // actually HandleInput recalculates isPointerActive every frame based on device presence.
+                    // We need a separate flag for "AllowPointer".
+                }
+                return;
+            }
+
+            // 1b. Update Pointer Start Position (Crucial Fix)
             pointerStart = origin;
 
-            // 2. Raycast
-            PerformRaycast(origin, direction);
+            // 2. Perform Raycast (Logic)
+            // We do this regardless of pointerAllowed to check if we are hovering UI
+            bool hitSomethingUpdated = PerformRaycastLogic(origin, direction);
+
+            // 3. Determine Final State
+            if (pointerAllowed)
+            {
+                // Normal mode: Always active
+                isPointerActive = true;
+            }
+            else
+            {
+                // Smart mode: Active only if hovering UI
+                isPointerActive = hitSomethingUpdated && IsHoveringUI();
+            }
+            
+            // 4. Update Interaction based on Final State
+            if (isPointerActive)
+            {
+                HandleInteraction();
+            }
+            else
+            {
+                // Force clear hover if we became inactive
+                if (currentHoveredObject != null) HandleHover(null);
+            }
+        }
+        
+        private bool IsHoveringUI()
+        {
+            return currentHoveredObject != null && 
+                   (currentHoveredObject.GetComponent<Button>() != null || 
+                    currentHoveredObject.GetComponent<Toggle>() != null ||
+                    currentHoveredObject.GetComponent<Slider>() != null);
+        }
+
+        /// <summary>
+        /// Explicitly enable/disable the pointer ray (e.g. for tasks that don't want it)
+        /// </summary>
+        public void SetPointerActive(bool active)
+        {
+            pointerAllowed = active;
+            
+            // If we are disabling, force state immediately
+            if (!active)
+            {
+                isPointerActive = false;
+                UpdateVisuals();
+                if (currentHoveredObject != null) HandleHover(null);
+            }
+            
+            Debug.Log($"[VRUIInputManager] Pointer allowed set to: {active}");
         }
 
         private bool TryGetDevice(InputDeviceCharacteristics characteristics, out Vector3 pos, out Vector3 dir)
@@ -198,7 +263,7 @@ namespace NeuroReachVR.UI
             return false;
         }
 
-        private void PerformRaycast(Vector3 origin, Vector3 direction)
+        private bool PerformRaycastLogic(Vector3 origin, Vector3 direction)
         {
             cachedPointerEventData.Reset();
             cachedPointerEventData.position = new Vector2(Screen.width / 2, Screen.height / 2);
@@ -210,7 +275,7 @@ namespace NeuroReachVR.UI
                 cachedRaycasters = FindObjectsByType<GraphicRaycaster>(FindObjectsSortMode.None);
                 nextRaycasterRefreshTime = Time.time + 1f;
             }
-
+        
             if (cachedRaycasters != null)
             {
                 foreach (var caster in cachedRaycasters)
@@ -242,7 +307,8 @@ namespace NeuroReachVR.UI
                 }
             }
 
-            // If no UI hit, check Physics
+            // If no UI hit, check Physics (only if not strictly UI mode?) 
+            // For now, let's allow physics hits too, but IsHoveringUI will filter later
             if (!didHit && hitPhysics)
             {
                 var btn = hit.collider.GetComponent<Button>();
@@ -255,9 +321,17 @@ namespace NeuroReachVR.UI
             }
 
             pointerEnd = hitPoint;
-
-            // Handle Interaction
+            
+            // Just update hover object, don't click yet
             HandleHover(hitObj);
+            
+            return didHit;
+        }
+
+        private void HandleInteraction()
+        {
+            GameObject hitObj = currentHoveredObject;
+            bool didHit = hitObj != null;
             
             bool selectPressed = IsSelectPressed();
             if (didHit && selectPressed)

@@ -207,6 +207,17 @@ namespace NeuroReachVR.Core
             OnGameStateChanged?.Invoke(currentState);
         }
         
+        public void SetTaskDuration(float duration)
+        {
+            Debug.Log($"[GameManager] Setting Task Duration: {duration}s");
+            // We need to set this on the task. But we don't know WHICH task yet in StartTask flow usually?
+            // Actually StartTask is called AFTER SetTaskDuration in HUDManager.
+            // So we can store it, or set it on the specific task instances if they have the method.
+            
+            if (balloonTask != null) balloonTask.SetDuration(duration);
+            // pathTask and spiralTask might not support it yet, but safe to ignore
+        }
+        
         public void EndCurrentTask()
         {
             if (currentTask != null)

@@ -15,6 +15,7 @@ namespace NeuroReachVR.Tasks
         [SerializeField] private int maxBalloons = 5;
         [SerializeField] private float spawnInterval = 2f;
         [SerializeField] private Vector3 spawnCenter = Vector3.zero;
+        [SerializeField] private float taskDuration = 60f; // Default duration
         
         [Header("Difficulty")]
         [SerializeField] private float minSpawnHeight = 0.5f;
@@ -114,6 +115,18 @@ namespace NeuroReachVR.Tasks
             }
             
             CheckBalloonPops();
+            
+            // Check for Timeout
+            if (ElapsedTime >= taskDuration)
+            {
+                EndTask();
+            }
+        }
+        
+        public void SetDuration(float duration)
+        {
+            taskDuration = duration;
+            Debug.Log($"[BalloonPopTask] Duration set to {taskDuration}s");
         }
         
         // On-screen debug display
@@ -325,6 +338,13 @@ namespace NeuroReachVR.Tasks
         {
             lastSpawnTime = Time.time;
             balloonsPopped = 0;
+            
+            // Disable Ray
+            var uiManager = FindFirstObjectByType<NeuroReachVR.UI.VRUIInputManager>();
+            if (uiManager != null)
+            {
+                uiManager.SetPointerActive(false);
+            }
         }
         
         protected override void OnTaskEnded()
@@ -340,6 +360,13 @@ namespace NeuroReachVR.Tasks
             }
             
             Debug.Log($"[BalloonPopTask] Task ended. Final score: {balloonsPopped} balloons popped.");
+            
+            // Re-enable Ray
+            var uiManager = FindFirstObjectByType<NeuroReachVR.UI.VRUIInputManager>();
+            if (uiManager != null)
+            {
+                uiManager.SetPointerActive(true);
+            }
         }
         
         public void SetDifficulty(float heightRange, float spawnRate)

@@ -20,6 +20,7 @@ public class HUDManager : MenuManager
     [SerializeField] private GameObject taskCompletionMenu;
     [SerializeField] private GameObject pauseMenu;
     [SerializeField] private GameObject gameplayHUD;
+    [SerializeField] private GameObject durationMenu; // New Menu
 
     [Header("Buttons - Main")]
     [SerializeField] private Button selectTaskButton;
@@ -42,6 +43,12 @@ public class HUDManager : MenuManager
     [SerializeField] private Button mediumButton;
     [SerializeField] private Button hardButton;
     [SerializeField] private Button difficultyBackButton;
+    
+    [Header("Buttons - Duration")]
+    [SerializeField] private Button duration15Button;
+    [SerializeField] private Button duration30Button;
+    [SerializeField] private Button duration60Button;
+    [SerializeField] private Button durationBackButton;
 
     [Header("Buttons - Start")]
     [SerializeField] private Button startTrialButton;
@@ -75,6 +82,7 @@ public class HUDManager : MenuManager
     private int score;
     private TaskType selectedTask;
     private DifficultyLevel selectedDifficulty;
+    private int selectedDuration = 60; // Default 60s
 
     protected override void Awake()
     {
@@ -97,6 +105,13 @@ public class HUDManager : MenuManager
         SetupVRMenu(taskCompletionMenu);
         SetupVRMenu(pauseMenu);
         SetupVRMenu(gameplayHUD);
+        
+        // Ensure Duration Menu exists (create if missing)
+        if (durationMenu == null)
+        {
+            CreateDurationMenu();
+        }
+        SetupVRMenu(durationMenu);
         
         // Ensure Stylus Visualizer exists
         var visualizer = FindFirstObjectByType<NeuroReachVR.Visuals.StylusVisualizer>();
@@ -124,11 +139,63 @@ public class HUDManager : MenuManager
         
         FixAllCanvases();
         
+        if (gameplayHUD == null)
+        {
+            CreateGameplayHUD();
+        }
+        
         // Ensure Task Completion Menu exists (create if missing)
         if (taskCompletionMenu == null)
         {
             CreateTaskCompletionMenu();
         }
+    }
+
+    private void CreateGameplayHUD()
+    {
+        Debug.Log("[HUDManager] Creating Gameplay HUD (Exit Button) dynamically...");
+        gameplayHUD = new GameObject("GameplayHUD_Auto");
+        SetupVRMenu(gameplayHUD);
+
+        // Position it explicitly (will be refined by PositionMenuInFrontOfUser)
+        // We want it slightly lower than eye level
+        
+        // Create a dedicated Quit Button
+        GameObject btnObj = new GameObject("QuitButton");
+        btnObj.transform.SetParent(gameplayHUD.transform, false);
+        
+        Image img = btnObj.AddComponent<Image>();
+        img.color = new Color(0.8f, 0.2f, 0.2f, 0.9f); // Reddish
+        
+        quitTaskButton = btnObj.AddComponent<Button>(); // Assign to field
+        quitTaskButton.targetGraphic = img;
+        
+        RectTransform rect = btnObj.GetComponent<RectTransform>();
+        rect.sizeDelta = new Vector2(120, 50);
+        // Position at bottom center of the HUD area
+        rect.anchorMin = new Vector2(0.5f, 0.0f);
+        rect.anchorMax = new Vector2(0.5f, 0.0f);
+        rect.pivot = new Vector2(0.5f, 0.0f);
+        rect.anchoredPosition = new Vector2(0, 0); // Bottom
+        
+        GameObject textObj = new GameObject("Text");
+        textObj.transform.SetParent(btnObj.transform, false);
+        TextMeshProUGUI tmp = textObj.AddComponent<TextMeshProUGUI>();
+        tmp.text = "STOP TASK";
+        tmp.fontSize = 20;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = Color.white;
+        RectTransform textRect = textObj.GetComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        
+        // Add Collider for VR
+        BoxCollider col = btnObj.AddComponent<BoxCollider>();
+        col.size = new Vector3(120, 50, 1);
+        
+        RegisterMenu("gameplay", gameplayHUD);
     }
 
     private void CreateTaskCompletionMenu()
@@ -198,6 +265,97 @@ public class HUDManager : MenuManager
         
         // Ensure listeners are re-bound since we just created buttons
         InitializeButtonListeners();
+    }
+    
+    private void CreateDurationMenu()
+    {
+        Debug.Log("[HUDManager] Creating Duration Menu dynamically...");
+        durationMenu = new GameObject("DurationMenu_Auto");
+        
+        // Clone from Difficulty Menu if possible for consistency, otherwise create scratch
+        if (difficultyMenu != null)
+        {
+            // Clone only the panel structure if feasible... 
+            // Actually, let's just build it to be safe and consistent with code-constructed UI
+        }
+        
+        SetupVRMenu(durationMenu);
+        
+        // Background Panel
+        GameObject panel = new GameObject("Panel");
+        panel.transform.SetParent(durationMenu.transform, false);
+        Image bg = panel.AddComponent<Image>();
+        bg.color = new Color(0.1f, 0.1f, 0.1f, 0.9f);
+        RectTransform panelRect = panel.GetComponent<RectTransform>();
+        panelRect.sizeDelta = new Vector2(500, 400);
+        
+        // Title
+        GameObject titleObj = new GameObject("Title");
+        titleObj.transform.SetParent(panel.transform, false);
+        TextMeshProUGUI titleText = titleObj.AddComponent<TextMeshProUGUI>();
+        titleText.text = "Select Duration";
+        titleText.fontSize = 36;
+        titleText.alignment = TextAlignmentOptions.Center;
+        titleText.color = Color.white;
+        RectTransform titleRect = titleObj.GetComponent<RectTransform>();
+        titleRect.anchorMin = new Vector2(0, 0.8f);
+        titleRect.anchorMax = new Vector2(1, 1);
+        titleRect.offsetMin = Vector2.zero;
+        titleRect.offsetMax = Vector2.zero;
+        
+        // Buttons Container
+        GameObject buttonsObj = new GameObject("Buttons");
+        buttonsObj.transform.SetParent(panel.transform, false);
+        VerticalLayoutGroup layout = buttonsObj.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = 15;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = false;
+        RectTransform buttonsRect = buttonsObj.GetComponent<RectTransform>();
+        buttonsRect.anchorMin = new Vector2(0, 0.15f);
+        buttonsRect.anchorMax = new Vector2(1, 0.8f);
+        buttonsRect.offsetMin = Vector2.zero;
+        buttonsRect.offsetMax = Vector2.zero;
+
+        // Create Buttons
+        duration15Button = CreateCompletionButton(buttonsObj.transform, "Btn15", "15 Seconds", Color.white);
+        duration15Button.GetComponent<Image>().color = new Color(0.2f, 0.6f, 1f); // Blueish
+        
+        duration30Button = CreateCompletionButton(buttonsObj.transform, "Btn30", "30 Seconds", Color.white);
+        duration30Button.GetComponent<Image>().color = new Color(0.2f, 0.6f, 1f);
+
+        duration60Button = CreateCompletionButton(buttonsObj.transform, "Btn60", "60 Seconds", Color.white);
+        duration60Button.GetComponent<Image>().color = new Color(0.2f, 0.6f, 1f);
+        
+        // Back Button
+        GameObject backBtnObj = new GameObject("BackButton");
+        backBtnObj.transform.SetParent(panel.transform, false);
+        durationBackButton = backBtnObj.AddComponent<Button>();
+        Image backImg = backBtnObj.AddComponent<Image>();
+        backImg.color = Color.gray;
+        durationBackButton.targetGraphic = backImg;
+        RectTransform backRect = backBtnObj.GetComponent<RectTransform>();
+        backRect.anchorMin = new Vector2(0.3f, 0.02f);
+        backRect.anchorMax = new Vector2(0.7f, 0.12f);
+        backRect.offsetMin = Vector2.zero;
+        backRect.offsetMax = Vector2.zero;
+        
+        GameObject backTextObj = new GameObject("Text");
+        backTextObj.transform.SetParent(backBtnObj.transform, false);
+        TextMeshProUGUI backText = backTextObj.AddComponent<TextMeshProUGUI>();
+        backText.text = "Back";
+        backText.fontSize = 20;
+        backText.alignment = TextAlignmentOptions.Center;
+        backText.color = Color.white;
+        RectTransform backTextRect = backTextObj.GetComponent<RectTransform>();
+        backTextRect.anchorMin = Vector2.zero;
+        backTextRect.anchorMax = Vector2.one;
+        
+        // VR Collider for Back Button
+        BoxCollider col = backBtnObj.AddComponent<BoxCollider>();
+        col.size = new Vector3(backRect.rect.width, backRect.rect.height, 1);
+        
+        RegisterMenu("duration", durationMenu);
     }
     
     private Button CreateCompletionButton(Transform parent, string name, string text, Color color)
@@ -327,8 +485,15 @@ public class HUDManager : MenuManager
     {
         if (menuObj == null || mainCamera == null) return;
 
-        float distance = 1.0f; // 1.0 meter away (closer is better for readability)
-        float heightOffset = -0.1f; // Slightly below eye level
+        float distance = 1.0f; // Standard distance
+        float heightOffset = -0.1f; // Standard height
+
+        // Special case for Gameplay HUD (Exit Button) - put it lower
+        if (menuObj == gameplayHUD)
+        {
+            distance = 0.7f; // Closer
+            heightOffset = -0.4f; // Much lower (waist/chest level)
+        }
 
         Vector3 camPos = mainCamera.transform.position;
         
@@ -362,6 +527,7 @@ public class HUDManager : MenuManager
         RegisterMenu("taskCompletion", taskCompletionMenu);
         RegisterMenu("pause", pauseMenu);
         RegisterMenu("gameplay", gameplayHUD);
+        RegisterMenu("duration", durationMenu);
     }
 
     private void InitializeButtonListeners()
@@ -397,6 +563,12 @@ public class HUDManager : MenuManager
         Bind(hardButton, () => SelectDifficulty(DifficultyLevel.Hard));
         Bind(difficultyBackButton, () => ShowMenu("selectTask"));
 
+        // Duration
+        Bind(duration15Button, () => SelectDuration(15));
+        Bind(duration30Button, () => SelectDuration(30));
+        Bind(duration60Button, () => SelectDuration(60));
+        Bind(durationBackButton, () => ShowMenu("difficulty"));
+
         // Start
         Bind(startTrialButton, StartTrial);
 
@@ -405,8 +577,13 @@ public class HUDManager : MenuManager
         Bind(backToMenuButton, () => ShowMenu("main"));
 
         // Pause
+        // Pause
         Bind(resumeButton, ResumeGame);
         Bind(quitTaskButton, QuitTask);
+        
+        // If we dynamically created the button, we need to make sure the binding works.
+        // The CreateGameplayHUD method sets the 'quitTaskButton' field.
+        // InitializeButtonListeners is called in Start(), which is AFTER Awake(), so it should be fine.
     }
 
     // --- Navigation Logic ---
@@ -423,9 +600,25 @@ public class HUDManager : MenuManager
         selectedDifficulty = difficulty;
         Debug.Log($"[HUDManager] Selected Difficulty: {difficulty}");
         
-        // Update Start Menu based on difficulty
-        UpdateStartMenuState();
+        // Check if task supports duration (Balloon does)
+        if (selectedTask == TaskType.BalloonPop)
+        {
+            ShowMenu("duration");
+        }
+        else
+        {
+            // For others, go straight to Start
+            UpdateStartMenuState();
+            ShowMenu("startTrial");
+        }
+    }
+
+    private void SelectDuration(int duration)
+    {
+        selectedDuration = duration;
+        Debug.Log($"[HUDManager] Selected Duration: {duration}s");
         
+        UpdateStartMenuState();
         ShowMenu("startTrial");
     }
 
@@ -566,12 +759,12 @@ public class HUDManager : MenuManager
     private void StartTrial()
     {
         Debug.Log("[HUDManager] Starting Trial...");
-        HideAllMenus();
-        if (gameplayHUD) gameplayHUD.SetActive(true);
         
-        PositionMenuInFrontOfUser(gameplayHUD);
+        // Use ShowMenu to properly handle transitions/hiding
+        ShowMenu("gameplay");
 
         gameManager.SetDifficulty(selectedDifficulty);
+        gameManager.SetTaskDuration(selectedDuration); // Pass duration
         gameManager.StartTask(selectedTask);
     }
 
