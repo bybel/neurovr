@@ -67,7 +67,7 @@ namespace NeuroReachVR.Input
         {
             if (inputActions == null)
             {
-                Debug.LogError("[StylusInputActions] Input Actions asset not assigned! Please assign 'Input Actions' in inspector.");
+                Debug.LogWarning("[StylusInputActions] Input Actions asset not assigned! Please assign 'Input Actions' in inspector.");
                 return;
             }
 
@@ -127,6 +127,14 @@ namespace NeuroReachVR.Input
         public void SetMinPressureThreshold(float threshold)
         {
             minPressureThreshold = Mathf.Clamp01(threshold);
+        }
+
+        public void Setup(InputActionAsset actions)
+        {
+            if (actions == null) return;
+            this.inputActions = actions;
+            InitializeInputActions();
+            EnableActions();
         }
     }
 }

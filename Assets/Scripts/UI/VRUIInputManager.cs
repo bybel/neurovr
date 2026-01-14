@@ -22,6 +22,9 @@ namespace NeuroReachVR.UI
         [SerializeField] private Vector3 pointerRotationOffset = new Vector3(60, 0, 0); // Default offset for Stylus
         [SerializeField] private Vector3 pointerPositionOffset = new Vector3(0, 0.03f, 0.095f); // User-calibrated offset
         
+        public Vector3 PointerRotationOffset => pointerRotationOffset;
+        public Vector3 PointerPositionOffset => pointerPositionOffset;
+        
         [Header("Visuals")]
         [SerializeField] private LineRenderer pointerLine;
         [SerializeField] private GameObject pointerDot;

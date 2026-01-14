@@ -3302,7 +3302,12 @@ MonoBehaviour:
   pathWidth: 0.1
   pathSegments: 50
   minAccuracy: 0.7
+  inkPositionOffset: {x: 0, y: 0, z: 0}
+  inkRotationOffset: {x: 0, y: 0, z: 0}
   feedback: {fileID: 895701218}
+  showDebugInk: 1
+  showInputTrail: 0
+  debugGhostRotationOffset: {x: 90, y: 0, z: 0}
 --- !u!4 &879830290
 Transform:
   m_ObjectHideFlags: 0
@@ -6276,7 +6281,12 @@ MonoBehaviour:
   pathWidth: 0.1
   pathSegments: 50
   minAccuracy: 0.7
+  inkPositionOffset: {x: 0, y: 0, z: 0}
+  inkRotationOffset: {x: 0, y: 0, z: 0}
   feedback: {fileID: 895701218}
+  showDebugInk: 1
+  showInputTrail: 0
+  debugGhostRotationOffset: {x: 90, y: 0, z: 0}
   spiralStartRadius: 0.2
   spiralEndRadius: 0.3
   spiralTurns: 3
@@ -8078,7 +8088,6 @@ MonoBehaviour:
   taskDuration: 60
   minSpawnHeight: 0.5
   maxSpawnHeight: 2
-  spawnRadius: 1.5
   feedback: {fileID: 895701218}
   explosionPrefab: {fileID: 8525990746615576120, guid: b85d21f3b8fed714bacf0c4fd50fa512, type: 3}
   explosionLifetime: 2

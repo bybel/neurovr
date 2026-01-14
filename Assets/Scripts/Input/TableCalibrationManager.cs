@@ -61,6 +61,13 @@ namespace NeuroReachVR.Input
             if (!isCalibrating || stylusInput == null) return;
 
             bool isPressed = stylusInput.IsPressed || stylusInput.IsButtonPressed;
+            
+            // DEBUG: Log input state every 60 frames to verify we are getting data
+            if (Time.frameCount % 60 == 0)
+            {
+                Debug.Log($"[TableCalibration] Calibrating... Pressed: {isPressed} (Pressure: {stylusInput.IsPressed}, Button: {stylusInput.IsButtonPressed}), Pos: {stylusInput.Position}");
+            }
+
             Vector3 currentPos = stylusInput.Position;
 
             if (isPressed)

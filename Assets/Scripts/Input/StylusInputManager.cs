@@ -32,25 +32,111 @@ namespace NeuroReachVR.Input
         private Vector3 lastPosition;
         private Quaternion lastRotation;
         
+        private StylusInputActionsManager actionsManager;
+
         public void SetCalibration(Vector3 posOffset, Vector3 rotOffset)
         {
+            Debug.Log($"[StylusInputManager] SetCalibration called: Pos={posOffset}, Rot={rotOffset}");
             calibrationPositionOffset = posOffset;
             calibrationRotationOffset = rotOffset;
         }
         
-        public bool IsAvailable => isInitialized && (stylusController != null || xrDevice.isValid);
-        public bool IsTracking => GetIsTracking();
-        public Vector3 Position => IsTracking ? GetStylusPosition() : Vector3.zero;
-        public Quaternion Rotation => IsTracking ? GetStylusRotation() : Quaternion.identity;
+        public bool IsAvailable => (actionsManager != null && actionsManager.IsAvailable) || (isInitialized && (stylusController != null || xrDevice.isValid));
+        public bool IsTracking => (actionsManager != null && actionsManager.IsTracking) || GetIsTracking();
+        
+        public Vector3 Position 
+        {
+            get
+            {
+                if (actionsManager != null && actionsManager.IsTracking)
+                    return actionsManager.Position + (actionsManager.Rotation * calibrationPositionOffset);
+                return IsTracking ? GetStylusPosition() : Vector3.zero;
+            }
+        }
+
+        public Quaternion Rotation 
+        {
+            get
+            {
+                if (actionsManager != null && actionsManager.IsTracking)
+                    return actionsManager.Rotation * Quaternion.Euler(calibrationRotationOffset);
+                return IsTracking ? GetStylusRotation() : Quaternion.identity;
+            }
+        }
+
         public float Confidence => IsTracking ? 1f : 0f;
         
-        public float Pressure => IsTracking ? GetPressure() : 0f;
-        public Vector2 Tilt => IsTracking ? GetTilt() : Vector2.zero;
+        public float Pressure 
+        {
+            get
+            {
+                if (actionsManager != null && actionsManager.IsTracking) return actionsManager.Pressure;
+                return IsTracking ? GetPressure() : 0f;
+            }
+        }
+        
+        public Vector2 Tilt => IsTracking ? GetTilt() : Vector2.zero; // ActionsManager has Tilt too, but let's stick to this for now unless needed
+        
         public bool IsPressed => Pressure >= minPressureThreshold;
-        public bool IsButtonPressed => IsTracking && GetButtonState();
+        
+        public bool IsButtonPressed 
+        {
+            get
+            {
+                if (actionsManager != null && actionsManager.IsTracking && actionsManager.IsButtonPressed) return true;
+                return IsTracking && GetButtonState();
+            }
+        }
         
         private void Start()
         {
+            // Initialize Actions Manager (Robust Fallback/Primary)
+            actionsManager = GetComponent<StylusInputActionsManager>();
+            if (actionsManager == null)
+            {
+                actionsManager = gameObject.AddComponent<StylusInputActionsManager>();
+                Debug.Log("[StylusInputManager] Added StylusInputActionsManager dynamically.");
+            }
+            
+            var assets = Resources.Load<InputActionAsset>("InputActions");
+            
+            #if UNITY_EDITOR
+            if (assets == null)
+            {
+                // Fallback: Try to find "Input Actions.inputactions" anywhere in the project
+                string[] guids = UnityEditor.AssetDatabase.FindAssets("Input Actions t:InputActionAsset");
+                foreach (string guid in guids)
+                {
+                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                    // Prioritize the user's custom asset in Assets folder
+                    if (!path.Contains("Package") && path.EndsWith("Input Actions.inputactions"))
+                    {
+                        assets = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(path);
+                        Debug.Log($"[StylusInputManager] Found Custom InputActions at: {path}");
+                        break;
+                    }
+                }
+                
+                // If still null, just take the first one (but log warning)
+                if (assets == null && guids.Length > 0)
+                {
+                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guids[0]);
+                    assets = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(path);
+                    Debug.LogWarning($"[StylusInputManager] Warning: Using fallback InputActions found at: {path}");
+                }
+            }
+            #endif
+
+            if (assets != null)
+            {
+                actionsManager.Setup(assets);
+                Debug.Log("[StylusInputManager] Configured InputActions.");
+            }
+            else
+            {
+                Debug.LogWarning("[StylusInputManager] Could not find 'InputActions' in Resources or Project! Stylus input will fail.");
+            }
+
             InitializeStylus();
         }
         
@@ -90,9 +176,15 @@ namespace NeuroReachVR.Input
             // Method 2: Try XR InputDevice (OpenXR)
             var inputDevices = new List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevices(inputDevices);
-            
+            if (inputDevices.Count == 0 && debugLogging)
+            {
+                Debug.LogWarning("[StylusInput] No XR InputDevices found. Is OpenXR initialized?");
+            }
+
             foreach (var device in inputDevices)
             {
+                if (debugLogging) Debug.Log($"[StylusInput] Checking device: {device.name}, Char: {device.characteristics}");
+
                 if (IsLogitechStylusDevice(device))
                 {
                     xrDevice = device;
@@ -316,7 +408,9 @@ namespace NeuroReachVR.Input
                 if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.gripButton, out bool grip) && grip) return true;
             }
             
+            // FORCE DEBUG: If pressure is high, we should return true?
             // Pressure threshold also indicates button press
+            // Debug.Log($"[StylusInput] Pressure: {Pressure}, IsPressed: {IsPressed}");
             return IsPressed;
         }
         

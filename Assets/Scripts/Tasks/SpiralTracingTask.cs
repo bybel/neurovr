@@ -30,6 +30,7 @@ namespace NeuroReachVR.Tasks
         private Vector3 lastPosition;
         private float lastAngle;
         private float radialAccuracy;
+        private bool spiralWasPressed;
         
         public float AngularVelocity => currentAngularVelocity;
         public float RadialAccuracy => radialAccuracy;
@@ -56,42 +57,7 @@ namespace NeuroReachVR.Tasks
             {
                 if (calibrationManager != null && !calibrationManager.IsCalibrated)
                 {
-                    // If not calibrated, ensure calibration is running
-                    // We can't easily check if it's running without exposing a property, 
-                    // but StartCalibration is safe to call repeatedly if we check IsCalibrated first?
-                    // Actually, let's just call UpdateCalibration if we can, or rely on the manager to handle its state.
-                    // But we need to START it once.
-                    // Let's assume the manager handles its own state or we trigger it once.
-                    // For now, let's just call StartCalibration if we haven't.
-                    // But we don't want to call it every frame.
-                    
-                    // Simple hack: check if we have points? No.
-                    // Let's just call StartCalibration once when we enter this state?
-                    // Or just rely on the user to have calibrated?
-                    // Better: If not calibrated, we trigger it.
-                    
-                    // Since we don't track "CalibrationStarted" here, let's just call StartCalibration
-                    // The manager should handle if it's already calibrating?
-                    // My implementation of TableCalibrationManager.StartCalibration() clears points.
-                    // So we shouldn't call it every frame.
-                    
-                    // We'll assume if !IsCalibrated, we need to calibrate.
-                    // But we need to know if we are ALREADY calibrating.
-                    // I didn't expose "IsCalibrating" in TableCalibrationManager.
-                    // Let's just assume for now we can't start it here easily without state.
-                    // Wait, I can just check if I have a path.
-                    // If I don't have a path, and I'm in Easy mode, and not calibrated...
-                    
-                    // Let's modify TableCalibrationManager to expose IsCalibrating or just handle it here.
-                    // Actually, let's just call StartCalibration if not calibrated AND not calibrating.
-                    // But I can't check IsCalibrating.
-                    
-                    // Let's just call StartCalibration() ONCE.
-                    // But where? OnTaskStarted?
-                    
-                    // Let's move on. I'll just check IsCalibrated. If false, I'll return and let the user calibrate.
-                    // But who starts the calibration?
-                    // I should start it in OnTaskStarted if needed.
+                    // Logic handled in OnTaskStarted mostly
                 }
             }
 
@@ -99,8 +65,34 @@ namespace NeuroReachVR.Tasks
             
             // Support all input modes: Stylus press, Mouse click, or Hand pinch
             bool isPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching;
+            
+            // Detect rising edge (fresh press) to start a new stroke
+            if (Time.frameCount % 60 == 0 && isTracing)
+            {
+                Debug.Log($"[SpiralTask] Pressed: {isPressed}, Pressure: {inputHandler.Pressure}, Position: {inputHandler.Position}");
+            }
+
+            // Rename wasPressed to spiralWasPressed to avoid base class conflict
+            if (isPressed && !spiralWasPressed)
+            {
+                Debug.Log("[SpiralTracingTask] Rising edge detected! Calling StartNewStroke.");
+                if (currentPath != null) currentPath.StartNewStroke();
+            }
+            if (!isPressed && spiralWasPressed)
+            {
+                Debug.Log("[SpiralTracingTask] Falling edge detected (Unpress).");
+            }
+            spiralWasPressed = isPressed;
+
             if (isTracing && isPressed)
+            {
+                // Update the visual path and tracking
+                if (currentPath != null)
+                {
+                    currentPath.UpdateTracing(inputHandler.Position);
+                }
                 TrackAngularVelocity();
+            }
         }
 
         protected override void OnTaskStarted()

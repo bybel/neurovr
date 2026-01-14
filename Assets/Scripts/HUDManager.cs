@@ -93,6 +93,7 @@ public class HUDManager : MenuManager
         stylusRotationOffset = new Vector3(60, 0, 0);
         stylusPositionOffset = new Vector3(0, 0.03f, 0.095f);
         
+        // Initialize main camera
         mainCamera = Camera.main;
         if (mainCamera == null) mainCamera = FindFirstObjectByType<Camera>();
         

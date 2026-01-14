@@ -201,9 +201,15 @@ namespace NeuroReachVR.Input
                     #if UNITY_EDITOR
                     else if (IsValidInput(simulatorInput))
                     {
-                        activeInput = simulatorInput;
-                        currentMode = InputMode.Simulator;
-                        Debug.LogWarning("[InputHandler] VR Input not found - Falling back to Simulator");
+                        // Only fallback if we don't have an OVRManager (implies we arn't doing Link/Quest dev)
+                        // OR if we explicitly want it.
+                        bool hasOVR = FindFirstObjectByType<OVRManager>() != null;
+                        if (!hasOVR)
+                        {
+                            activeInput = simulatorInput;
+                            currentMode = InputMode.Simulator;
+                            Debug.LogWarning("[InputHandler] VR Input not found & No OVRManager - Falling back to Simulator");
+                        }
                     }
                     #endif
                     else

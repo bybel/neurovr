@@ -19,6 +19,9 @@ namespace NeuroReachVR.Visuals
         [SerializeField] private Vector3 rotationOffset = new Vector3(0, 0, 0);
         [SerializeField] private Vector3 positionOffset = new Vector3(0, 0, 0);
 
+        public Vector3 PositionOffset => positionOffset;
+        public Vector3 RotationOffset => rotationOffset;
+
         private GameObject stylusModel;
         private Renderer stylusRenderer;
 

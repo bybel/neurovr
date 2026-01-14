@@ -20,7 +20,6 @@ namespace NeuroReachVR.Tasks
         [Header("Difficulty")]
         [SerializeField] private float minSpawnHeight = 0.5f;
         [SerializeField] private float maxSpawnHeight = 2f;
-        [SerializeField] private float spawnRadius = 1.5f;
         
         [Header("Feedback")]
         [SerializeField] private TaskFeedback feedback;
