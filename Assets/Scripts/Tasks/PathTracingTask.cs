@@ -14,15 +14,15 @@ namespace NeuroReachVR.Tasks
     {
         [Header("Path Generation")]
         [SerializeField] protected TraceablePath pathPrefab; // Protected so SpiralTracingTask can access it
-        [SerializeField] protected PathType pathType = PathType.Line;
+        [SerializeField] protected PathType pathType = PathType.Curve;
         [SerializeField] protected Vector3 pathStart = new Vector3(0.5f, 1f, 1f);
         [SerializeField] protected Vector3 pathEnd = new Vector3(0.5f, 1f, 1f);
-        [SerializeField] private float pathLength = 1f;
+        [SerializeField] private float pathLength = 2f;
         
         [Header("Tracing Settings")]
-        [SerializeField] protected float pathWidth = 0.1f;
-        [SerializeField] protected int pathSegments = 50;
-        [SerializeField] protected float minAccuracy = 0.3f; // Lowered from 0.7 for easier gameplay
+        [SerializeField] protected float pathWidth = 0.0025f; // 0.25cm Target
+        [SerializeField] protected int pathSegments = 5;
+        [SerializeField] protected float minAccuracy = 0.5f; // Lowered from 0.7 for easier gameplay
         
         [Header("Ink Alignment")]
         [SerializeField] private Vector3 inkPositionOffset = Vector3.zero;
@@ -128,7 +128,11 @@ namespace NeuroReachVR.Tasks
             // CRITICAL: Ensure path is in World Space and NOT parented to Camera or Task Manager
             pathObj.transform.SetParent(null);
             pathObj.transform.position = Vector3.zero;
-            pathObj.transform.rotation = Quaternion.identity;
+            
+            // RANDOM ROTATION (Y-Axis only)
+            float randomY = UnityEngine.Random.Range(0f, 360f);
+            pathObj.transform.rotation = Quaternion.Euler(0, randomY, 0);
+            
             pathObj.transform.localScale = Vector3.one;
             
             currentPath = pathObj.GetComponent<TraceablePath>();
@@ -141,12 +145,25 @@ namespace NeuroReachVR.Tasks
             }
             
             currentPath.InitializePath(pathPoints);
-            currentPath.SetPathWidth(pathWidth); // Apply the configured width (e.g. 0.02f for Spiral)
+            // enforce 0.25cm for target path
+            currentPath.SetPathWidth(0.0025f); 
             
             Debug.Log($"[PathTracingTask] Generated path from {pathStart} to {pathEnd} with {pathPoints.Count} points");
             
             isTracing = true;
             pathStartTime = elapsedTime; // Record when path tracing begins
+            
+            // RESET INPUT STATE
+            isDebouncedPressed = false;
+            lastPressTime = 0;
+            // Ensure we don't instantly trigger if they are holding it?
+            // Actually, if they are holding it, we might want to start drawing?
+            // But if we reset to false, and they ARE holding it, the Update loop will see Raw=True, Debounced=False
+            // And then it will enter the debounce logic and eventually trigger StartNewStroke!
+            // This is exactly what we want.
+            // Just ensure lastReleaseTime allows immediate trigger if they are holding?
+            // No, we want them to repress or at least wait for debounce threshold.
+            lastReleaseTime = Time.time - 5f; // clear release debounce lockout
         }
         
         /// <summary>
@@ -159,7 +176,7 @@ namespace NeuroReachVR.Tasks
             if (mainCam == null) return;
             
             // Use the same interaction depth as SimulatorInput (1.5m)
-            float interactionDepth = 1.5f;
+            float interactionDepth = 0.5f;
             
             // Get the center point by projecting the screen center
             Vector3 screenCenter = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0);
@@ -200,7 +217,7 @@ namespace NeuroReachVR.Tasks
         private bool inputWasPressed = false;
 
         [Header("Debug Visuals")]
-        [SerializeField] private bool showDebugInk = true;
+        [SerializeField] private bool showDebugInk = false; // Disabled by default
         [SerializeField] private bool showInputTrail = false;
         [SerializeField] private Vector3 debugGhostRotationOffset = new Vector3(90, 0, 0);
         private GameObject debugInkCursor;
@@ -225,30 +242,23 @@ namespace NeuroReachVR.Tasks
 
         private void UpdateDebugVisuals()
         {
+            if (debugInkCursor != null) debugInkCursor.SetActive(false);
+            
+            // To properly update the ghost stylus (if we want it), we need the calculated transform
             GetCalculatedInkTransform(out Vector3 pos, out Quaternion rot);
-
-            // 1. Ink Tip Cursor (Sphere)
+            
+            // 1. Ink Tip Cursor (Sphere) - DISABLED
+            /*
             if (debugInkCursor == null)
             {
                 debugInkCursor = GameObject.CreatePrimitive(PrimitiveType.Sphere);
                 debugInkCursor.name = "DebugInkCursor";
-                debugInkCursor.transform.localScale = Vector3.one * 0.015f; 
-                Destroy(debugInkCursor.GetComponent<Collider>());
-                var renderer = debugInkCursor.GetComponent<Renderer>();
-                renderer.material.shader = Shader.Find("Unlit/Color");
+                // ... setup ...
             }
+            */
             
-            // Color Logic: Magenta if Valid, RED if Invalid
-            var cursorRenderer = debugInkCursor.GetComponent<Renderer>();
-            if (inputHandler.HasValidInput)
-                cursorRenderer.material.color = Color.magenta;
-            else
-                cursorRenderer.material.color = Color.red;
-
-            debugInkCursor.SetActive(true);
-            debugInkCursor.transform.position = pos;
-            
-            // 2. Ink Stylus Ghost (Cylinder)
+            // 2. Ink Stylus Ghost (Cylinder) - DISABLED (User feedback: "Trippy")
+            /*
             if (debugInkStylus == null)
             {
                 // Parent pivot container
@@ -276,11 +286,14 @@ namespace NeuroReachVR.Tasks
             debugInkStylus.SetActive(true);
             debugInkStylus.transform.position = pos;
             debugInkStylus.transform.rotation = rot;
+            */
             
             // Allow live tuning of ghost offset
+            /*
             Transform ghostModel = debugInkStylus.transform.Find("GhostModel");
             if (ghostModel != null)
                 ghostModel.localRotation = Quaternion.Euler(debugGhostRotationOffset);
+            */
         }
 
         private void GetCalculatedInkTransform(out Vector3 position, out Quaternion rotation)
@@ -296,50 +309,87 @@ namespace NeuroReachVR.Tasks
             position = inputPos + (rotation * inkPositionOffset);
         }
 
+        // Debounce variables
+        private float lastPressTime = 0f;
+        private float lastReleaseTime = 0f;
+        private bool isDebouncedPressed = false;
+        private const float DEBOUNCE_THRESHOLD = 0.05f; // reduced from 150ms to 50ms for faster strokes
+
         private void UpdateTracing()
         {
             if (!isTracing) return;
             
-            // Support all input modes: Stylus press, Mouse click, or Hand pinch
-            bool isPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching;
+            // Raw input state
+            bool rawPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching || UnityEngine.Input.GetKey(KeyCode.Space);
             
-            // Detect START of press (Down event)
-            if (isPressed && !inputWasPressed)
+            // Debounce Logic with Failsafe
+            if (rawPressed)
             {
-                if (currentPath != null)
+                // FAILSAFE: If raw input is persistent but debounce logic fails, force it after 0.5s
+                if (!isDebouncedPressed && Time.time - lastReleaseTime > 0.5f) 
                 {
-                    currentPath.StartNewStroke();
+                     isDebouncedPressed = true;
+                     if (currentPath != null) currentPath.StartNewStroke();
+                }
+
+                lastPressTime = Time.time;
+                if (!isDebouncedPressed)
+                {
+                    // Normal Debounce Entry
+                    if (Time.time - lastReleaseTime > DEBOUNCE_THRESHOLD)
+                    {
+                        isDebouncedPressed = true;
+                        Debug.Log("[PathTracing] Input Debounced STARTED > New Stroke");
+                        if (currentPath != null)
+                        {
+                            currentPath.StartNewStroke();
+                        }
+                    }
+                    else
+                    {
+                        // Bounce Re-entry
+                        isDebouncedPressed = true; 
+                         Debug.Log("[PathTracing] Input Debounced CONTINUED (Bounce)");
+                    }
                 }
             }
-            
-            if (Time.frameCount % 60 == 0 && (isPressed || inputHandler.HasValidInput))
+            else
             {
-                 Debug.Log($"[PathTracing] Input Status - Pressed: {isPressed}, Valid: {inputHandler.HasValidInput}, Mode: {inputHandler.CurrentMode}");
+                // Raw release
+                if (isDebouncedPressed)
+                {
+                   if (Time.time - lastPressTime > DEBOUNCE_THRESHOLD)
+                   {
+                       isDebouncedPressed = false;
+                       lastReleaseTime = Time.time;
+                       Debug.Log("[PathTracing] Input Debounced ENDED");
+                   }
+                }
             }
 
-            if (isPressed)
+            // Status Log - EVERY 30 FRAMES
+            if (Time.frameCount % 30 == 0)
+            {
+                 Debug.Log($"[PathTracing] Raw: {rawPressed}, Debounced: {isDebouncedPressed}, Valid: {inputHandler.HasValidInput}, Path: {currentPath != null}");
+            }
+
+            // Use Debounced state for drawing
+            if (isDebouncedPressed)
             {
                 GetCalculatedInkTransform(out Vector3 inputPos, out Quaternion finalRot);
 
                 if (currentPath != null)
                 {
-                    if (Time.frameCount % 60 == 0)
-                         Debug.Log($"[PathTracing] Drawing at {inputPos}.");
-                    
-                    if (showInputTrail && Time.frameCount % 5 == 0)
-                    {
-                        var sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-                        sphere.name = "InputTrail";
-                        sphere.transform.position = inputPos;
-                        sphere.transform.localScale = Vector3.one * 0.005f;
-                        Destroy(sphere.GetComponent<Collider>());
-                    }
-                         
                     currentPath.UpdateTracing(inputPos);
                 }
             }
+            else if (rawPressed)
+            {
+                // Debug: Why is raw pressed but not debounced?
+                // This happens during the "Wait" phase of the debounce or if logic is broken.
+            }
             
-            inputWasPressed = isPressed;
+            inputWasPressed = isDebouncedPressed;
         }
         
         protected virtual void OnPathCompleted()
@@ -369,8 +419,25 @@ namespace NeuroReachVR.Tasks
             ReportAttempt(completionTime, success, accuracy);
             
             completedPaths.Add(currentPath);
+            // Destroy immediately to clear view (requested by user)
+            if (currentPath != null) 
+            {
+               Destroy(currentPath.gameObject);
+               // Remove from list so we don't try to destroy null later
+               completedPaths.Remove(currentPath); 
+            }
+            
             currentPath = null;
             isTracing = false;
+            
+            // Start Delay for next path
+            StartCoroutine(WaitAndSpawnNext());
+        }
+        
+        private System.Collections.IEnumerator WaitAndSpawnNext()
+        {
+            yield return new WaitForSeconds(1.5f);
+            GenerateNewPath();
         }
         
         protected override void OnTaskStarted()

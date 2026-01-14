@@ -13,13 +13,19 @@ namespace NeuroReachVR.Tasks
     public class TraceablePath : MonoBehaviour
     {
         [Header("Path Settings")]
-        [SerializeField] private float pathWidth = 0.04f;
+        [SerializeField] private float pathWidth = 0.005f; // reduced from 0.04 to 0.005
         [SerializeField] private Color targetColor = Color.blue;
         [SerializeField] private Color correctColor = Color.green;
         [SerializeField] private Color errorColor = Color.red;
 
+        // ... (Header items)
+
+
+
+
+
         [Header("Trace Settings")]
-        [SerializeField] private float traceWidth = 0.01f; // 1cm thick ink by default
+        [SerializeField] private float traceWidth = 0.005f; // Match pathWidth (0.5cm)
 
         [Header("Components")]
         [SerializeField] private LineRenderer targetLineRenderer;
@@ -53,25 +59,73 @@ namespace NeuroReachVR.Tasks
         public float Progress => (targetPath != null && targetPath.Count > 0) ? currentSegment / (float)targetPath.Count : 0f;
         public float AverageDeviation => deviationCount > 0 ? totalDeviation / deviationCount : 0f;
 
+        [SerializeField] private MeshFilter targetMeshFilter;
+        [SerializeField] private MeshRenderer targetMeshRenderer;
+        private Mesh targetMesh;
+
+        // ... (Code continues) ...
+
         private void Awake()
         {
             // Initialize lists
             targetPath = new List<Vector3>();
             strokes = new List<List<Vector3>>();
             
-            // Setup Target LineRenderer
-            if (targetLineRenderer == null)
-            {
-                targetLineRenderer = GetComponent<LineRenderer>();
-                if (targetLineRenderer == null)
-                    targetLineRenderer = gameObject.AddComponent<LineRenderer>();
-            }
-            ConfigureLineRenderer(targetLineRenderer, targetColor);
+            // Disable legacy LineRenderer if present
+            if (targetLineRenderer != null) targetLineRenderer.enabled = false;
 
+            // Setup Target Mesh Components FIRST
+            SetupTargetMesh();
+            
             // Setup Traced Mesh Components
             if (showRealTimeFeedback)
             {
-                Transform existingTracedObj = transform.Find("TracedPathMesh");
+               SetupTracedMesh();
+            }
+
+            // FORCE small width for now to fix persistent huge paths
+            // Now that meshes are setup, this will actually render!
+            SetPathWidth(0.0025f); // 0.25cm (Target)
+            traceWidth = 0.005f; // 0.5cm (Trace - kept as requested)
+        }
+        
+        private void SetupTargetMesh()
+        {
+             Transform existingObj = transform.Find("TargetPathMesh");
+             GameObject obj;
+             if (existingObj != null) obj = existingObj.gameObject;
+             else 
+             {
+                 obj = new GameObject("TargetPathMesh");
+                 obj.transform.SetParent(transform);
+                 obj.transform.localPosition = Vector3.zero;
+                 obj.transform.localRotation = Quaternion.identity;
+                 obj.transform.localScale = Vector3.one;
+             }
+             
+             targetMeshFilter = obj.GetComponent<MeshFilter>();
+             if (!targetMeshFilter) targetMeshFilter = obj.AddComponent<MeshFilter>();
+             
+             targetMeshRenderer = obj.GetComponent<MeshRenderer>();
+             if (!targetMeshRenderer) targetMeshRenderer = obj.AddComponent<MeshRenderer>();
+             
+             targetMesh = new Mesh();
+             targetMesh.name = "TargetPathMesh";
+             targetMeshFilter.mesh = targetMesh;
+             
+             // Material
+             Shader shader = Shader.Find("Standard"); 
+             if (!shader) shader = Shader.Find("Mobile/Diffuse");
+             var material = new Material(shader);
+             material.color = targetColor;
+             // Make it semi-transparent ghost? Or solid? User said "same as ink". Ink is solid.
+             // Solid blue is good.
+             targetMeshRenderer.material = material;
+        }
+
+        private void SetupTracedMesh()
+        {
+            Transform existingTracedObj = transform.Find("TracedPathMesh");
                 GameObject tracedObj;
                 
                 if (existingTracedObj != null)
@@ -99,40 +153,17 @@ namespace NeuroReachVR.Tasks
                 tracedMeshFilter.mesh = tracedMesh;
                 
                 // Configure Material for Mesh
-                // Use Standard shader for 3D lighting, or Unlit if preferred.
-                // User asked for "3D", so Standard or VertexLit is good.
                 Shader shader = Shader.Find("Standard"); 
                 if (shader == null) shader = Shader.Find("Diffuse");
-                if (shader == null) shader = Shader.Find("Mobile/Diffuse");
                 
                 if (shader != null)
                 {
                     Material material = new Material(shader);
-                    // Enable vertex colors
-                    // Standard shader doesn't always use vertex colors unless configured?
-                    // Actually, for "correct/error" coloring, we need vertex colors or a texture.
-                    // Let's use a shader that supports vertex colors. "Particles/Standard Surface" or "Mobile/Particles/VertexLit Blended"
-                    
-                    // Fallback to simple Vertex Color shader for guaranteed feedback colors
-                    Shader vertexColorShader = Shader.Find("Particles/Standard Surface");
-                    if (vertexColorShader == null) vertexColorShader = Shader.Find("Mobile/Particles/Alpha Blended");
-                    if (vertexColorShader != null) material.shader = vertexColorShader;
-                    
-                    material.color = Color.white; // Tint by vertex color
+                    // Use a shader that supports vertex colors if we want green/red
+                    // Or just default to Green/Ink Color
+                    material.color = correctColor; 
                     tracedMeshRenderer.material = material;
                 }
-            }
-        }
-
-        private void ConfigureLineRenderer(LineRenderer renderer, Color color)
-        {
-            if (renderer == null) return;
-            renderer.startWidth = pathWidth;
-            renderer.endWidth = pathWidth;
-            renderer.material = new Material(Shader.Find("Sprites/Default"));
-            renderer.startColor = color;
-            renderer.endColor = color;
-            renderer.useWorldSpace = true;
         }
 
         public void InitializePath(List<Vector3> path)
@@ -142,7 +173,7 @@ namespace NeuroReachVR.Tasks
             targetPath = new List<Vector3>(path);
             ResetPath(); // Clears strokes
             
-            RenderTargetPath();
+            RenderTargetPathTube();
         }
         
         /// <summary>
@@ -161,6 +192,26 @@ namespace NeuroReachVR.Tasks
             Debug.Log($"[TraceablePath] StartNewStroke called! Current strokes count: {strokes.Count}");
             currentStroke = new List<Vector3>();
             strokes.Add(currentStroke);
+        }
+
+
+
+        public void SetAlignment(LineAlignment alignment)
+        {
+            // Mesh doesn't use alignment, it's 3D geometry.
+        }
+
+        // --- Render Target Path as Tube ---
+        private void RenderTargetPathTube()
+        {
+            if (targetMesh == null || targetPath == null || targetPath.Count < 2) return;
+            
+            Debug.Log($"[TraceablePath] Rendering Target Tube with Width: {pathWidth} (Radius: {pathWidth*0.5f})");
+            
+            // Treat target path as a single stroke
+            List<List<Vector3>> tempStrokes = new List<List<Vector3>> { targetPath };
+            
+            GenerateTubeMesh(targetMesh, tempStrokes, pathWidth * 0.5f, targetColor);
         }
 
         public void UpdateTracing(Vector3 worldPosition)
@@ -204,7 +255,10 @@ namespace NeuroReachVR.Tasks
                     }
                 }
 
-                float tolerance = Mathf.Max(pathWidth * 3f, 0.3f);
+                // FIX: Tolerance was 0.3f (30cm), causing instant completion!
+                // Reduced to Max(width*3, 2cm)
+                float tolerance = Mathf.Max(pathWidth * 3f, 0.02f);
+                
                 if (minDeviation < tolerance)
                 {
                     totalDeviation += minDeviation;
@@ -218,38 +272,30 @@ namespace NeuroReachVR.Tasks
                 UpdateMesh();
             }
         }
-
-        private void RenderTargetPath()
-        {
-            if (targetLineRenderer == null || targetPath == null) return;
-            targetLineRenderer.positionCount = targetPath.Count;
-            targetLineRenderer.startWidth = pathWidth;
-            targetLineRenderer.endWidth = pathWidth;
-            targetLineRenderer.startColor = targetColor;
-            targetLineRenderer.endColor = targetColor;
-            for (int i = 0; i < targetPath.Count; i++)
-                targetLineRenderer.SetPosition(i, targetPath[i]);
-        }
         
         // --- Tube Mesh Generation ---
 
         private void UpdateMesh()
         {
             if (tracedMesh == null) return;
-
-            meshVertices.Clear();
-            meshTriangles.Clear();
-            meshColors.Clear();
-            meshNormals.Clear();
-
-            // USE TRACE WIDTH HERE
+             // USE TRACE WIDTH HERE
             float radius = traceWidth * 0.5f;
+            GenerateTubeMesh(tracedMesh, strokes, radius, correctColor, true);
+        }
 
-            foreach (var stroke in strokes)
+        private void GenerateTubeMesh(Mesh mesh, List<List<Vector3>> strokesToRender, float radius, Color color, bool useVertexColors = false)
+        {
+            mesh.Clear();
+            List<Vector3> vertices = new List<Vector3>();
+            List<int> triangles = new List<int>();
+            List<Color> colors = new List<Color>();
+            List<Vector3> normals = new List<Vector3>();
+
+            foreach (var stroke in strokesToRender)
             {
-                if (stroke.Count < 2) continue; // Need at least 2 points to make a tube segment
+                if (stroke.Count < 2) continue;
 
-                int startIndex = meshVertices.Count;
+                int startIndex = vertices.Count;
 
                 for (int i = 0; i < stroke.Count; i++)
                 {
@@ -260,7 +306,7 @@ namespace NeuroReachVR.Tasks
                     if (i < stroke.Count - 1) forward = (stroke[i + 1] - currentPoint).normalized;
                     else forward = (currentPoint - stroke[i - 1]).normalized;
                     
-                    if (forward == Vector3.zero) forward = Vector3.forward; // fallback
+                    if (forward == Vector3.zero) forward = Vector3.forward;
 
                     Vector3 up = Vector3.up; 
                     if (Mathf.Abs(Vector3.Dot(forward, up)) > 0.9f) up = Vector3.right;
@@ -269,37 +315,16 @@ namespace NeuroReachVR.Tasks
                     up = Vector3.Cross(right, forward).normalized;
 
                     // Generate ring vertices
-                    for (int j = 0; j <= tubeSegments; j++) // <= to duplicate first vertex for UV wrapping if needed, here just for closure
+                    for (int j = 0; j <= tubeSegments; j++) 
                     {
                         float angle = j * Mathf.PI * 2f / tubeSegments;
                         Vector3 offset = (right * Mathf.Cos(angle) + up * Mathf.Sin(angle)) * radius;
                         
-                        meshVertices.Add(currentPoint + offset);
-                        meshNormals.Add(offset.normalized); // Normal points out from center
+                        vertices.Add(currentPoint + offset);
+                        normals.Add(offset.normalized); 
 
-                        // Color calculation (same logic as before)
-                        // This is expensive to do per vertex, but accurate.
-                        // Can optimize by calculating per ring.
-                        
-                        // Find deviation for color
-                        // We map this point to the target path roughly
-                        // For simplicity, verify deviation against closest point in target
-                        // This might be slow if target is huge.
-                        // TODO: Optimize by using currentSegment hints or pre-calculated deviation?
-                        // For now, let's just trace everything as "Green" or reuse the last calculated deviation logic?
-                        // Actually, let's just make it Green if it's user input, or maybe gradient?
-                        // The original had a gradient.
-                        
-                        // Let's use a simple distance check to the WHOLE target path? Too slow.
-                        // Let's assume the user is roughly following time.
-                        // Or just color it based on the global state?
-                        // Let's stick to Green (Correct) for now to save perf, or Green/Red based on simple check.
-                        
-                        // Simple check: Is this point close to ANY point on target?
-                        // We can cache the deviation in the stroke list?
-                        // Let's just use Green for simplicity in this implementation step. The user asked for "3D" and "Discontinuous".
-                        // We can restore the gradient later or assume Green.
-                        meshColors.Add(correctColor); 
+                        // Color
+                        colors.Add(color);
                     }
                 }
 
@@ -315,32 +340,29 @@ namespace NeuroReachVR.Tasks
                         int currentNextRing = baseIndex + ringSize + j;
                         int nextNextRing = baseIndex + ringSize + j + 1;
 
-                        // Triangle 1
-                        meshTriangles.Add(current);
-                        meshTriangles.Add(nextNextRing);
-                        meshTriangles.Add(next);
+                        triangles.Add(current);
+                        triangles.Add(nextNextRing);
+                        triangles.Add(next);
 
-                        // Triangle 2
-                        meshTriangles.Add(current);
-                        meshTriangles.Add(currentNextRing);
-                        meshTriangles.Add(nextNextRing);
+                        triangles.Add(current);
+                        triangles.Add(currentNextRing);
+                        triangles.Add(nextNextRing);
                     }
                 }
             }
-
-            tracedMesh.Clear();
-            tracedMesh.vertices = meshVertices.ToArray();
-            tracedMesh.triangles = meshTriangles.ToArray();
-            tracedMesh.colors = meshColors.ToArray();
-            tracedMesh.normals = meshNormals.ToArray();
-            tracedMesh.RecalculateBounds();
+            
+            mesh.vertices = vertices.ToArray();
+            mesh.triangles = triangles.ToArray();
+            mesh.colors = colors.ToArray();
+            mesh.normals = normals.ToArray();
+            mesh.RecalculateBounds();
         }
-
         private float CalculateAccuracy()
         {
-            if (deviationCount == 0) return 1f;
+            if (deviationCount == 0 || pathWidth <= 0) return 1f;
             float avgDeviation = totalDeviation / deviationCount;
-            return Mathf.Clamp01(1f - Mathf.Clamp01(avgDeviation / pathWidth));
+            // Simple linear falloff: 0 deviation = 100%, pathWidth deviation = 0%
+            return Mathf.Clamp01(1f - (avgDeviation / pathWidth));
         }
 
         public void ResetPath()
@@ -348,6 +370,7 @@ namespace NeuroReachVR.Tasks
             strokes.Clear();
             currentStroke = null;
             if (tracedMesh != null) tracedMesh.Clear();
+            if (targetMesh != null) targetMesh.Clear();
             
             isActive = true;
             currentSegment = 0;
@@ -363,18 +386,11 @@ namespace NeuroReachVR.Tasks
 
         public void SetPathWidth(float width)
         {
-            pathWidth = Mathf.Max(0.005f, width);
-            if (targetLineRenderer != null)
-            {
-                targetLineRenderer.startWidth = pathWidth;
-                targetLineRenderer.endWidth = pathWidth;
-            }
-        }
-
-        public void SetAlignment(LineAlignment alignment)
-        {
-            if (targetLineRenderer != null) targetLineRenderer.alignment = alignment;
-            // Mesh doesn't use alignment, it's 3D geometry.
+            // Removed minimum clamp to allow thinner paths
+            pathWidth = Mathf.Max(0.001f, width); // Min 1mm
+            
+            // Re-render target path if width changes
+            RenderTargetPathTube();
         }
     }
 

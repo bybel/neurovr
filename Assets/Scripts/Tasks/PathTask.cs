@@ -304,6 +304,7 @@ namespace NeuroReachVR.Tasks
             
             // Cleanup
             completedPaths.Add(currentPath);
+            currentPath.gameObject.SetActive(false); // Hide immediately
             currentPath = null;
             isTracing = false;
             

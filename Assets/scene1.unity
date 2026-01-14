@@ -3299,9 +3299,9 @@ MonoBehaviour:
   pathStart: {x: -0.5, y: 1, z: 1}
   pathEnd: {x: 0.5, y: 1, z: 1}
   pathLength: 1
-  pathWidth: 0.1
-  pathSegments: 50
-  minAccuracy: 0.7
+  pathWidth: 0.005
+  pathSegments: 5
+  minAccuracy: 0.5
   inkPositionOffset: {x: 0, y: 0, z: 0}
   inkRotationOffset: {x: 0, y: 0, z: 0}
   feedback: {fileID: 895701218}

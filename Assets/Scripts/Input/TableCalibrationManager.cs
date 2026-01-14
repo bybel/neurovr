@@ -254,7 +254,8 @@ namespace NeuroReachVR.Input
             isCalibrated = true;
             isCalibrating = false;
             
-            CreatePlaneVisual();
+            // Disable debug visual to avoid magenta plane artifact
+            // CreatePlaneVisual();
             
             Debug.Log($"[TableCalibration] Calibration Complete! Center: {planeCenter}, Size: {zoneSize}, Normal: {normal}");
             OnCalibrationComplete?.Invoke();
