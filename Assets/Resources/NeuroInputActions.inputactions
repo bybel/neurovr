@@ -1,5 +1,6 @@
 {
-    "name": "Input Actions",
+    "version": 1,
+    "name": "NeuroInputActions",
     "maps": [
         {
             "name": "Gameplay",
@@ -8,7 +9,7 @@
                 {
                     "name": "Pause",
                     "type": "Button",
-                    "id": "pause-action-0001-0002-0003-pause00001",
+                    "id": "d29d1077-8339-4c8d-8869-7973d9326a26",
                     "expectedControlType": "Button",
                     "processors": "",
                     "interactions": "",
@@ -18,7 +19,7 @@
             "bindings": [
                 {
                     "name": "",
-                    "id": "pause-bind-esc-0001-0002-escape0001",
+                    "id": "9b60da42-8373-41bb-aef8-fe6d68747d7d",
                     "path": "<Keyboard>/escape",
                     "interactions": "",
                     "processors": "",
@@ -29,7 +30,7 @@
                 },
                 {
                     "name": "",
-                    "id": "pause-bind-p-key-0001-0002-pkey00001",
+                    "id": "81615569-c083-4318-912f-981045b842cd",
                     "path": "<Keyboard>/p",
                     "interactions": "",
                     "processors": "",
@@ -40,7 +41,7 @@
                 },
                 {
                     "name": "",
-                    "id": "pause-bind-xr-menu-right-0001-0002",
+                    "id": "ef965620-8356-43b3-85e8-038753265842",
                     "path": "<XRController>{RightHand}/menuButton",
                     "interactions": "",
                     "processors": "",
@@ -51,7 +52,7 @@
                 },
                 {
                     "name": "",
-                    "id": "pause-bind-xr-menu-left-0001-0003",
+                    "id": "6b43085a-8b1e-4c7b-b003-881c15f4803d",
                     "path": "<XRController>{LeftHand}/menuButton",
                     "interactions": "",
                     "processors": "",
@@ -62,7 +63,7 @@
                 },
                 {
                     "name": "",
-                    "id": "pause-bind-oculus-start-0001-0002",
+                    "id": "88796155-7036-419b-b98a-2e61286663f2",
                     "path": "<OculusTouchController>/start",
                     "interactions": "",
                     "processors": "",
@@ -73,7 +74,7 @@
                 },
                 {
                     "name": "",
-                    "id": "pause-bind-gamepad-start-0001-0002",
+                    "id": "bad16935-7cff-44e2-a083-8a3d13511eb9",
                     "path": "<Gamepad>/start",
                     "interactions": "",
                     "processors": "",
@@ -140,7 +141,7 @@
                     "expectedControlType": "Vector2",
                     "processors": "",
                     "interactions": "",
-                    "initialStateCheck": false
+                    "initialStateCheck": true
                 },
                 {
                     "name": "MiddleClick",
@@ -167,7 +168,7 @@
                     "expectedControlType": "Vector3",
                     "processors": "",
                     "interactions": "",
-                    "initialStateCheck": false
+                    "initialStateCheck": true
                 },
                 {
                     "name": "TrackedDeviceOrientation",
@@ -176,7 +177,7 @@
                     "expectedControlType": "Quaternion",
                     "processors": "",
                     "interactions": "",
-                    "initialStateCheck": false
+                    "initialStateCheck": true
                 }
             ],
             "bindings": [
@@ -551,6 +552,94 @@
                     "processors": "",
                     "groups": "XR",
                     "action": "TrackedDeviceOrientation",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                }
+            ]
+        },
+        {
+            "name": "Stylus",
+            "id": "270ad337-1425-4c01-a589-9b9774677271",
+            "actions": [
+                {
+                    "name": "Position",
+                    "type": "Value",
+                    "id": "02967268-bf01-4475-bebb-7cde97669d01",
+                    "expectedControlType": "Vector3",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Rotation",
+                    "type": "Value",
+                    "id": "2dfde659-1e1b-419b-bec8-9d41d9c79234",
+                    "expectedControlType": "Quaternion",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Pressure",
+                    "type": "Value",
+                    "id": "36d93617-3bf7-4252-8706-e758a0058b8f",
+                    "expectedControlType": "Axis",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": true
+                },
+                {
+                    "name": "Button",
+                    "type": "Button",
+                    "id": "787c956e-8255-442a-9ca8-038283e18aeb",
+                    "expectedControlType": "Button",
+                    "processors": "",
+                    "interactions": "",
+                    "initialStateCheck": false
+                }
+            ],
+            "bindings": [
+                {
+                    "name": "",
+                    "id": "2d8f9675-9c59-42b7-ba17-769b03ef9b63",
+                    "path": "<XRController>/devicePosition",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "XR",
+                    "action": "Position",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "673f3261-26dd-4d26-bb2d-7d4022c451db",
+                    "path": "<XRController>/deviceRotation",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "XR",
+                    "action": "Rotation",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "90e63234-712e-4b6d-a131-7e8841a15321",
+                    "path": "<XRController>/trigger",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "XR",
+                    "action": "Pressure",
+                    "isComposite": false,
+                    "isPartOfComposite": false
+                },
+                {
+                    "name": "",
+                    "id": "55c2d76e-8367-4286-9a25-8374d9e03d36",
+                    "path": "<XRController>/primaryButton",
+                    "interactions": "",
+                    "processors": "",
+                    "groups": "XR",
+                    "action": "Button",
                     "isComposite": false,
                     "isPartOfComposite": false
                 }

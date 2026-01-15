@@ -136,6 +136,69 @@ namespace NeuroReachVR.Input
             Debug.Log($"[InputHandler] Started with mode: {currentMode}, HasValidInput: {HasValidInput}");
         }
 
+
+
+        private void SelectInputSource()
+        {
+            // If explicit modes are set, just do them
+            if (preferredMode == InputMode.Hand)
+            {
+                 SetHandMode();
+                 return;
+            }
+            if (preferredMode == InputMode.Stylus)
+            {
+                 if (stylus != null && stylus.IsAvailable)
+                 {
+                     activeInput = stylus;
+                     currentMode = InputMode.Stylus;
+                 }
+                 else
+                 {
+                     currentMode = InputMode.None;
+                 }
+                 return;
+            }
+            if (preferredMode == InputMode.Simulator)
+            {
+                activeInput = simulatorInput;
+                currentMode = InputMode.Simulator;
+                return;
+            }
+
+            // AUTO MODE LOGIC
+            if (preferredMode == InputMode.Auto)
+            {
+                // Simple Priority: Stylus > Hands
+                bool stylusAvailable = stylus != null && stylus.IsAvailable;
+                
+                if (stylusAvailable)
+                {
+                    activeInput = stylus;
+                    currentMode = InputMode.Stylus;
+                    DisableHands(); // Crucial: Hands must be OFF to allow OpenXR to see the stylus
+                    return;
+                }
+                else
+                {
+                    // Fallback to Hands
+                    EnableHands();
+                    
+                    if (useXRHandsPackage && rightHandXR != null)
+                    {
+                         activeInput = rightHandXR;
+                         currentMode = InputMode.Hand; 
+                    }
+                    else
+                    {
+                        currentMode = InputMode.Hand;
+                    }
+                }
+            }
+        }
+        
+        private float nextRetryTime = 0f;
+
         private void Update()
         {
             // Auto-switch if current input becomes unavailable
@@ -153,6 +216,16 @@ namespace NeuroReachVR.Input
                     SelectInputSource();
                 }
             }
+            
+            // RETRY STYLUS SEARCH: If we are in Hand mode (Fallback) but want Stylus/Auto, RETRY periodically
+            if (currentMode == InputMode.Hand && preferredMode == InputMode.Auto)
+            {
+                 if (Time.time > nextRetryTime && nextRetryTime > 0)
+                 {
+                      Debug.Log("[InputHandler] Retrying Stylus Search...");
+                      SelectInputSource(); // Will trigger !isSearchingForStylus block -> Start Search
+                 }
+            }
                 
             // Debug: Log active input source periodically
             if (Time.frameCount % 300 == 0) // Reduced frequency to 5s
@@ -161,73 +234,29 @@ namespace NeuroReachVR.Input
             }
         }
 
-        private void SelectInputSource()
+        private void DisableHands()
         {
-            switch (preferredMode)
-            {
-                case InputMode.Hand:
-                    activeInput = GetActiveHand();
-                    currentMode = activeInput != null ? InputMode.Hand : InputMode.None;
-                    break;
+             if (useXRHandsPackage)
+             {
+                 if(leftHandXR != null) leftHandXR.StopTracking();
+                 if(rightHandXR != null) rightHandXR.StopTracking();
+             }
+        }
 
-                case InputMode.Stylus:
-                    activeInput = stylus;
-                    currentMode = stylus != null && stylus.IsAvailable ? InputMode.Stylus : InputMode.None;
-                    break;
-                
-                case InputMode.Simulator:
-                    activeInput = simulatorInput;
-                    currentMode = simulatorInput != null ? InputMode.Simulator : InputMode.None;
-                    break;
+        private void EnableHands()
+        {
+             if (useXRHandsPackage)
+             {
+                 if(leftHandXR != null) leftHandXR.StartTracking();
+                 if(rightHandXR != null) rightHandXR.StartTracking();
+             }
+        }
 
-                case InputMode.Auto:
-                    // Priority: Stylus > Preferred Hand > Other Hand
-                    if (IsValidInput(stylus))
-                    {
-                        activeInput = stylus;
-                        currentMode = InputMode.Stylus;
-                    }
-                    else if (IsValidInput(GetActiveHand()))
-                    {
-                        activeInput = GetActiveHand();
-                        currentMode = InputMode.Hand;
-                    }
-                    else if (IsValidInput(GetOtherHand()))
-                    {
-                        activeInput = GetOtherHand();
-                        currentMode = InputMode.Hand;
-                    }
-                    // Fallback to Simulator if no VR input found (Last Resort)
-                    #if UNITY_EDITOR
-                    else if (IsValidInput(simulatorInput))
-                    {
-                        // Only fallback if we don't have an OVRManager (implies we arn't doing Link/Quest dev)
-                        // OR if we explicitly want it.
-                        bool hasOVR = FindFirstObjectByType<OVRManager>() != null;
-                        if (!hasOVR)
-                        {
-                            activeInput = simulatorInput;
-                            currentMode = InputMode.Simulator;
-                            Debug.LogWarning("[InputHandler] VR Input not found & No OVRManager - Falling back to Simulator");
-                        }
-                    }
-                    #endif
-                    else
-                    {
-                        activeInput = null;
-                        currentMode = InputMode.None;
-                        
-                        // Debug: List all available devices to help diagnose why VR is failing
-                        if (Time.frameCount % 300 == 0)
-                        {
-                            var devices = new System.Collections.Generic.List<UnityEngine.XR.InputDevice>();
-                            UnityEngine.XR.InputDevices.GetDevices(devices);
-                            string deviceList = string.Join(", ", devices.ConvertAll(d => $"{d.name} ({d.characteristics})"));
-                            Debug.LogWarning($"[InputHandler] No valid input found! Available XR Devices: {deviceList}");
-                        }
-                    }
-                    break;
-            }
+        private void SetHandMode()
+        {
+            EnableHands();
+            activeInput = GetActiveHand();
+            currentMode = activeInput != null ? InputMode.Hand : InputMode.None;
         }
 
         private IInputSource GetActiveHand()

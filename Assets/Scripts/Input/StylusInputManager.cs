@@ -32,6 +32,10 @@ namespace NeuroReachVR.Input
         private Vector3 lastPosition;
         private Quaternion lastRotation;
         
+        // Sticky Availability Logic to prevent "flapping"
+        private float lastAvailableTime = 0f;
+        private const float STICKY_TIMEOUT = 3.0f; // Keep "Available" for 3s after loss
+        
         private StylusInputActionsManager actionsManager;
 
         public void SetCalibration(Vector3 posOffset, Vector3 rotOffset)
@@ -41,15 +45,30 @@ namespace NeuroReachVR.Input
             calibrationRotationOffset = rotOffset;
         }
         
-        public bool IsAvailable => (actionsManager != null && actionsManager.IsAvailable) || (isInitialized && (stylusController != null || xrDevice.isValid));
+        public bool IsAvailable 
+        {
+            get
+            {
+                 bool rawAvailable = (actionsManager != null && actionsManager.IsAvailable) || (isInitialized && (stylusController != null || xrDevice.isValid));
+                 if (rawAvailable) lastAvailableTime = Time.time; // Update heartbeat
+                 return rawAvailable || (Time.time - lastAvailableTime < STICKY_TIMEOUT);
+            }
+        }
         public bool IsTracking => (actionsManager != null && actionsManager.IsTracking) || GetIsTracking();
         
         public Vector3 Position 
         {
             get
             {
+                // Prioritize ActionsManager IF it has valid data
                 if (actionsManager != null && actionsManager.IsTracking)
-                    return actionsManager.Position + (actionsManager.Rotation * calibrationPositionOffset);
+                {
+                    Vector3 actionPos = actionsManager.Position;
+                    if (actionPos != Vector3.zero) // Simple validation: don't accept zero if likely invalid
+                        return actionPos + (actionsManager.Rotation * calibrationPositionOffset);
+                }
+                
+                // Fallback to internal methods (XR Device / Legacy)
                 return IsTracking ? GetStylusPosition() : Vector3.zero;
             }
         }
@@ -65,6 +84,36 @@ namespace NeuroReachVR.Input
         }
 
         public float Confidence => IsTracking ? 1f : 0f;
+        
+        public Vector3 RawPosition 
+        {
+            get
+            {
+                // Bypass IsTracking check to return whatever the driver says
+                if (actionsManager != null)
+                {
+                    Vector3 p = actionsManager.Position;
+                    if (p != Vector3.zero) return p + (actionsManager.Rotation * calibrationPositionOffset);
+                }
+                return GetStylusPosition();
+            }
+        }
+
+        public Quaternion RawRotation 
+        {
+            get
+            {
+                // Bypass IsTracking check
+                if (actionsManager != null)
+                {
+                    Quaternion r = actionsManager.Rotation;
+                    // Check validity roughly
+                    if (r.w != 0 || r.x != 0 || r.y != 0 || r.z != 0) 
+                        return r * Quaternion.Euler(calibrationRotationOffset);
+                }
+                return GetStylusRotation();
+            }
+        }
         
         public float Pressure 
         {
@@ -98,18 +147,18 @@ namespace NeuroReachVR.Input
                 Debug.Log("[StylusInputManager] Added StylusInputActionsManager dynamically.");
             }
             
-            var assets = Resources.Load<InputActionAsset>("InputActions");
+            var assets = Resources.Load<InputActionAsset>("NeuroInputActions");
             
             #if UNITY_EDITOR
             if (assets == null)
             {
-                // Fallback: Try to find "Input Actions.inputactions" anywhere in the project
-                string[] guids = UnityEditor.AssetDatabase.FindAssets("Input Actions t:InputActionAsset");
+                // Fallback: Try to find "NeuroInputActions.inputactions" anywhere in the project
+                string[] guids = UnityEditor.AssetDatabase.FindAssets("NeuroInputActions t:InputActionAsset");
                 foreach (string guid in guids)
                 {
                     string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
                     // Prioritize the user's custom asset in Assets folder
-                    if (!path.Contains("Package") && path.EndsWith("Input Actions.inputactions"))
+                    if (!path.Contains("Package") && path.EndsWith("NeuroInputActions.inputactions"))
                     {
                         assets = UnityEditor.AssetDatabase.LoadAssetAtPath<UnityEngine.InputSystem.InputActionAsset>(path);
                         Debug.Log($"[StylusInputManager] Found Custom InputActions at: {path}");
@@ -138,18 +187,42 @@ namespace NeuroReachVR.Input
             }
 
             InitializeStylus();
+            debugLogging = true; // FORCE DEBUG LOGGING
+            Debug.Log($"[StylusInputManager] Initialization Complete. IsTracking: {IsTracking}, ActionsAvailable: {actionsManager?.IsAvailable}");
         }
         
+        private float nextDeviceCheckTime = 0f;
+
         private void Update()
         {
-            if (!isInitialized)
-                TryInitializeStylus();
-            
-            if (IsTracking)
+            if (isInitialized)
             {
-                lastPosition = GetStylusPosition();
-                lastRotation = GetStylusRotation();
-                lastPressure = GetPressure();
+               bool currentlyAvailable = (stylusController != null && stylusController.enabled) || xrDevice.isValid;
+               
+               if (currentlyAvailable)
+               {
+                   lastAvailableTime = Time.time;
+               }
+               else
+               {
+                   // If we get here, device became invalid/disconnected
+                   // Only reset isInitialized if we exceeded the sticky timeout
+                   if (Time.time - lastAvailableTime > STICKY_TIMEOUT)
+                   {
+                        Debug.LogWarning($"[StylusInput] Stylus device lost (Timeout {STICKY_TIMEOUT}s).");
+                        isInitialized = false;
+                        xrDevice = default;
+                        stylusController = null;
+                   }
+               }
+            }
+
+            // Only try to initialize periodically to avoid spamming and overhead
+            if ((!isInitialized) && Time.time > nextDeviceCheckTime)
+            {
+                nextDeviceCheckTime = Time.time + 1.5f; // Check every 1.5 seconds
+                TryInitializeStylus();
+                if (isInitialized) lastAvailableTime = Time.time;
             }
         }
         
@@ -158,10 +231,48 @@ namespace NeuroReachVR.Input
             TryInitializeStylus();
         }
         
+        private bool IsLogitechStylus(UnityEngine.InputSystem.InputDevice device)
+        {
+            if (device == null) return false;
+            
+            // Check for explicit Logitech product names
+            string productName = device.description.product;
+            string deviceName = device.name;
+            string manufacturer = device.description.manufacturer;
+            
+            bool isLogitech = (manufacturer != null && manufacturer.Contains(LOGITECH_MANUFACTURER)) ||
+                              (productName != null && (productName.Contains(MX_INK_PRODUCT) || productName.Contains("VR Ink") || productName.Contains("Stylus")));
+
+            if (isLogitech) return true;
+                
+            // FALLBACK: Accept "OpenXR" generic controllers if no explicit match
+            // This allows the system to pick up the device even if recognized as a generic controller by OpenXR
+            if (deviceName.Contains("OpenXR") || deviceName.Contains("XRController"))
+            {
+                // We'll try to use it if it's not a Headset
+                bool isHeadset = false;
+                foreach (var usage in device.usages)
+                {
+                    if (usage.ToString() == "LeftEye" || usage.ToString() == "RightEye")
+                    {
+                        isHeadset = true;
+                        break;
+                    }
+                }
+
+                if (!isHeadset)
+                {
+                     return true; 
+                }
+            }
+            
+            return false;
+        }
         private void TryInitializeStylus()
         {
-            // Method 1: Try Unity Input System XR Controller
+            // Method 1: Try Unity Input System XR Controller (Explicit Logitech)
             stylusController = InputSystem.GetDevice<XRController>();
+            
             if (stylusController != null)
             {
                 if (IsLogitechStylus(stylusController))
@@ -173,18 +284,12 @@ namespace NeuroReachVR.Input
                 }
             }
             
-            // Method 2: Try XR InputDevice (OpenXR)
+            // Method 2: Try XR InputDevice (OpenXR) - Generic Scan
             var inputDevices = new List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevices(inputDevices);
-            if (inputDevices.Count == 0 && debugLogging)
-            {
-                Debug.LogWarning("[StylusInput] No XR InputDevices found. Is OpenXR initialized?");
-            }
-
+            
             foreach (var device in inputDevices)
             {
-                if (debugLogging) Debug.Log($"[StylusInput] Checking device: {device.name}, Char: {device.characteristics}");
-
                 if (IsLogitechStylusDevice(device))
                 {
                     xrDevice = device;
@@ -195,7 +300,7 @@ namespace NeuroReachVR.Input
                 }
             }
             
-            // Method 3: Try Input System devices
+            // Method 3: Try Input System devices (Generic Scan)
             foreach (var device in InputSystem.devices)
             {
                 if (IsLogitechStylus(device))
@@ -207,8 +312,8 @@ namespace NeuroReachVR.Input
                 }
             }
 
-            // Method 4: Fallback to Right Controller if no specific Stylus found
-            // This allows testing with standard controllers if the Stylus driver isn't reporting correctly
+            // Method 4: Fallback to Right Controller (Generic) if no specific Stylus found
+            // This is critical for stabilizing input if the specific driver isn't working
             var rightHandDevices = new List<UnityEngine.XR.InputDevice>();
             InputDevices.GetDevicesWithCharacteristics(InputDeviceCharacteristics.Right | InputDeviceCharacteristics.Controller, rightHandDevices);
             if (rightHandDevices.Count > 0)
@@ -219,24 +324,15 @@ namespace NeuroReachVR.Input
                     Debug.Log($"[StylusInput] Fallback: Using Right Controller as Stylus: {xrDevice.name}");
                 return;
             }
+            
+            if (debugLogging && inputDevices.Count == 0)
+            {
+                 // Only log this if we really found nothing at all
+                 // Debug.LogWarning("[StylusInput] No XR InputDevices found yet.");
+            }
         }
         
-        private bool IsLogitechStylus(UnityEngine.InputSystem.InputDevice device)
-        {
-            if (device == null) return false;
-            
-            var description = device.description;
-            
-            // Guard against null description fields - these can be null for some devices
-            string manufacturer = description.manufacturer ?? string.Empty;
-            string product = description.product ?? string.Empty;
-            string deviceClass = description.deviceClass ?? string.Empty;
-            
-            return manufacturer.Contains(LOGITECH_MANUFACTURER) && 
-                   (product.Contains(MX_INK_PRODUCT) || 
-                    product.Contains("Stylus") ||
-                    deviceClass == "Stylus");
-        }
+
         
         private bool IsLogitechStylusDevice(UnityEngine.XR.InputDevice device)
         {
@@ -245,13 +341,15 @@ namespace NeuroReachVR.Input
             // Check device characteristics
             if (device.characteristics.HasFlag(InputDeviceCharacteristics.TrackedDevice))
             {
-                // Check name/role for stylus
-                // Relaxed check: Accept anything with "Stylus" or "Pen" or even "Controller" if we are desperate
-                // But for now, let's just make sure we catch the MX Ink even if name varies
-                return device.name.Contains("Stylus") || 
-                       device.name.Contains("MX Ink") ||
-                       device.name.Contains("Logitech") ||
-                       device.name.Contains("Pen");
+                // Relaxed check: Accept anything with "Stylus" or "Pen"
+                if (device.name.Contains("Stylus") || 
+                    device.name.Contains("MX Ink") ||
+                    device.name.Contains("Logitech") ||
+                    device.name.Contains("Pen"))
+                {
+                    return true;
+                }
+                // If we want to be SURE, let's check for Right Controller here too if the name is ambiguous.
             }
             
             return false;
@@ -295,41 +393,82 @@ namespace NeuroReachVR.Input
         private Vector3 GetStylusPosition()
         {
             Vector3 rawPos = lastPosition;
-            Quaternion rawRot = lastRotation;
+            Quaternion rawRot = lastRotation; // Need rot for offset calculation
+            bool successPos = false;
 
             // Try Input System
             if (stylusController != null)
             {
-                try { rawPos = stylusController.devicePosition.ReadValue(); rawRot = stylusController.deviceRotation.ReadValue(); } catch { }
-            }
-            // Try XR InputDevice
-            else if (xrDevice.isValid)
-            {
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 p)) rawPos = p;
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion r)) rawRot = r;
+                try { 
+                    Vector3 tempPos = stylusController.devicePosition.ReadValue(); 
+                    // Only accept if non-zero
+                    if (tempPos != Vector3.zero)
+                    {
+                        rawPos = tempPos;
+                        successPos = true;
+                    }
+                } catch { }
             }
             
-            // Apply Calibration
-            // Tip Position = RawPos + (RawRot * Offset)
+            // Try XR InputDevice (fallback if InputSystem failed or returned zero)
+            if (!successPos && xrDevice.isValid)
+            {
+                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 p)) 
+                {
+                    // Only accept if non-zero
+                    if (p != Vector3.zero)
+                    {
+                        rawPos = p;
+                        successPos = true;
+                    }
+                }
+            }
+
+            if (debugLogging && Time.frameCount % 120 == 0)
+            {
+                Debug.Log($"[StylusInput] GetPos: Success={successPos}, RawPos={rawPos}, ValidDevice={xrDevice.isValid||stylusController!=null}");
+            }
+            
+            // Apply Calibration (Tip Position = RawPos + (RawRot * Offset))
+            // Note: We use the helper GetStylusRotation() to ensure we get the calibrated rotation
             return rawPos + (GetStylusRotation() * calibrationPositionOffset);
         }
         
         private Quaternion GetStylusRotation()
         {
             Quaternion rawRot = lastRotation;
+            bool successRot = false;
 
             // Try Input System
             if (stylusController != null)
             {
-                try { rawRot = stylusController.deviceRotation.ReadValue(); } catch { }
-            }
-            // Try XR InputDevice
-            else if (xrDevice.isValid)
-            {
-                if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion r)) rawRot = r;
+                try { 
+                    Quaternion tempRot = stylusController.deviceRotation.ReadValue(); 
+                    // Only accept if valid (w can't be 0 if normalized) and not identity? IDENTITY IS VALID though.
+                    // But if it's (0,0,0,0), it's invalid.
+                    if (tempRot.w != 0 || tempRot.x != 0 || tempRot.y != 0 || tempRot.z != 0) 
+                    {
+                         rawRot = tempRot;
+                         successRot = true;
+                    }
+                } catch { }
             }
             
-            // Apply Calibration
+            // Try XR InputDevice
+            if (!successRot && xrDevice.isValid)
+            {
+               if (xrDevice.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion r)) 
+               {
+                   rawRot = r;
+                   successRot = true;
+               }
+            }
+
+            if (debugLogging && Time.frameCount % 120 == 0)
+            {
+                Debug.Log($"[StylusInput] GetRot: Success={successRot}, RawRot={rawRot.eulerAngles}");
+            }
+
             return rawRot * Quaternion.Euler(calibrationRotationOffset);
         }
         

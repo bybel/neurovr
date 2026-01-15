@@ -25,6 +25,10 @@ namespace NeuroReachVR.Visuals
         private GameObject stylusModel;
         private Renderer stylusRenderer;
 
+        // Fallback for tracking loss
+        private Vector3 lastValidPosition;
+        private Quaternion lastValidRotation;
+
         private void Start()
         {
             if (inputHandler == null)
@@ -113,23 +117,103 @@ namespace NeuroReachVR.Visuals
         {
             if (inputHandler == null) return;
 
-            // Only show if we have valid input (Stylus or Hand)
-            // And specifically if we are in Stylus mode (or Simulator mimicking stylus)
-            bool shouldShow = inputHandler.HasValidInput && 
-                             (inputHandler.CurrentMode == InputMode.Stylus || inputHandler.CurrentMode == InputMode.Simulator);
+            // FIX: Show if we are in Stylus mode OR Auto mode (searching for stylus)
+            // Even if HasValidInput is false momentarily (tracking lost), we should keep showing it at last known pos
+            // or maybe just default to showing it if we intend to use Stylus.
+            bool intendedModeIsStylus = inputHandler.CurrentMode == InputMode.Stylus || 
+                                      (inputHandler.CurrentMode == InputMode.Auto && !inputHandler.IsInputAvailable(InputMode.Hand)); 
+
+            // If InputHandler is in "None" mode but Preferred is Auto/Stylus, it might be SEARCHING.
+            // In Search mode, we should SHOW the stylus to indicate "Searching..." (maybe at head pos or last pos)
+            
+            bool shouldShow = false;
+            
+            if (inputHandler.HasValidInput)
+            {
+                 // precise check
+                 shouldShow = (inputHandler.CurrentMode == InputMode.Stylus || inputHandler.CurrentMode == InputMode.Simulator);
+            }
+            else
+            {
+                 // Fallback: If we are "Auto" or "Stylus" preferred, show it?
+                 // If CurrentMode is Hand, definitely HIDDEN.
+                 if (inputHandler.CurrentMode == InputMode.Hand)
+                 {
+                     shouldShow = false;
+                 }
+                 else
+                 {
+                     // If CurrentMode is None (Searching) or Stylus (Lost Tracking), SHOW IT.
+                     // But only if Preferred is Auto or Stylus
+                     // actually, we can't easily check 'PreferredMode' from here (it's private in InputHandler... wait, no it's serialized but private field. Public accessor?)
+                     // InputHandler doesn't expose PreferredMode publicly (only SetInputMode).
+                     // But we can infer from CurrentMode == None or Stylus.
+                     
+                     // If we definitely don't have Hands, and we aren't in Simulator... well, let's just show it.
+                     shouldShow = true;
+                 }
+            }
             
             if (stylusModel.activeSelf != shouldShow)
                 stylusModel.SetActive(shouldShow);
 
             if (shouldShow)
             {
-                // Calculate rotation first
-                Quaternion finalRotation = inputHandler.Rotation * Quaternion.Euler(rotationOffset);
+                // Calculate target position and rotation
+                Vector3 targetPos = Vector3.zero;
+                Quaternion targetRot = Quaternion.identity;
+
+                // VISUALIZE RAW DATA DIRECTLY if possible
+                if (inputHandler.ActiveInput is StylusInputManager stylusParams)
+                {
+                    targetPos = stylusParams.RawPosition;
+                    targetRot = stylusParams.RawRotation;
+                }
+                // Fallback (e.g. Simulator or unexpected state)
+                else
+                {
+                     targetPos = inputHandler.Position;
+                     targetRot = inputHandler.Rotation;
+                }
+                
+                // If we are searching (ActiveInput is null/None via InputHandler), try to find StylusManager manually?
+                if (inputHandler.CurrentMode == InputMode.None || inputHandler.CurrentMode == InputMode.Auto)
+                {
+                    // Find StylusInputManager reference if we haven't
+                     var stylusMan = FindFirstObjectByType<StylusInputManager>();
+                     if (stylusMan != null)
+                     {
+                         targetPos = stylusMan.RawPosition;
+                         targetRot = stylusMan.RawRotation;
+                     }
+                }
+
+                // Handle Tracking Loss gracefully
+                // If position crashes to zero (unlikely for a real held object unless untracked),
+                // use last valid position to prevent visual glitching
+                if (targetPos.sqrMagnitude > 0.001f)
+                {
+                    lastValidPosition = targetPos;
+                    lastValidRotation = targetRot;
+                }
+                else if (lastValidPosition.sqrMagnitude > 0.001f)
+                {
+                     // Use fallback
+                     targetPos = lastValidPosition;
+                     targetRot = lastValidRotation;
+                }
+                
+                Quaternion finalRotation = targetRot * Quaternion.Euler(rotationOffset);
                 transform.rotation = finalRotation;
                 
                 // Apply position offset RELATIVE to the rotation (Local Space)
-                // This matches how VRUIInputManager calculates the ray origin
-                transform.position = inputHandler.Position + (finalRotation * positionOffset);
+                transform.position = targetPos + (finalRotation * positionOffset);
+            }
+
+            // DEBUG LOGGING
+            if (Time.frameCount % 120 == 0)
+            {
+                 Debug.Log($"[StylusVisualizer] Visible={shouldShow}, ModelActive={stylusModel.activeSelf}, HandlerMode={inputHandler.CurrentMode}, InputPos={inputHandler.Position}, VisualizerPos={transform.position}");
             }
         }
     }

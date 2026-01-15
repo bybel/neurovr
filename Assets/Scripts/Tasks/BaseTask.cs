@@ -45,6 +45,8 @@ namespace NeuroReachVR.Tasks
         
         protected virtual void Start()
         {
+            Debug.Log($"[{GetType().Name}] Start() called. AutoStart: {autoStart}");
+            
             // Auto-find InputHandler if not assigned
             if (inputHandler == null)
             {
@@ -79,7 +81,12 @@ namespace NeuroReachVR.Tasks
         
         protected virtual void Update()
         {
-            if (!isActive) return;
+            if (!isActive) 
+            {
+                 // Log occasionally if inactive, just to prove the object is alive but sleeping
+                 if (Time.frameCount % 300 == 0) Debug.Log($"[{GetType().Name}] Inactive Update. Waiting for StartTask()...");
+                 return;
+            }
             
             elapsedTime += Time.deltaTime;
             
@@ -94,6 +101,7 @@ namespace NeuroReachVR.Tasks
         
         public virtual void StartTask()
         {
+            Debug.Log($"[{GetType().Name}] StartTask() called!");
             isActive = true;
             elapsedTime = 0f;
             score = 0;

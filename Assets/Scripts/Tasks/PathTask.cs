@@ -9,20 +9,26 @@ namespace NeuroReachVR.Tasks
     /// <summary>
     /// Path Task: User traces a visible path.
     /// Session: 5 consecutive paths.
-    /// Mechanics: Press button to ink, Release button to finish path.
+    /// Mechanics: Fixed time duration (default 3s).
     /// </summary>
     public class PathTask : PathTracingTask
     {
         [Header("Path Task Settings")]
         [SerializeField] private int trialsPerSession = 5;
         [SerializeField] private float delayBetweenTrials = 1.0f;
+        [SerializeField] private float trialDuration = 3.0f; // Configurable duration
         
         [Header("Table Calibration")]
         [SerializeField] private TableCalibrationManager calibrationManager;
         
         private int currentTrialIndex = 0;
         private bool isWaitingForNextTrial = false;
-        private bool strokeStarted = false;
+        
+        // Input State
+        private bool wasPressed = false;
+        private bool isDebounced = false;
+        private float lastPressTime = 0;
+        private float lastReleaseTime = 0;
 
         protected override void Start()
         {
@@ -45,7 +51,7 @@ namespace NeuroReachVR.Tasks
             currentTrialIndex = 0;
             pathsCompleted = 0;
             isWaitingForNextTrial = false;
-            strokeStarted = false;
+            wasPressed = false;
             
             // Allow base to cleanup old paths
             base.OnTaskStarted();
@@ -62,23 +68,27 @@ namespace NeuroReachVR.Tasks
                 {
                     Debug.Log("[PathTask] Easy mode detected but not calibrated. Starting calibration...");
                     calibrationManager.StartCalibration();
-                    // We will generate the path AFTER calibration completes? 
-                    // Or we can rely on Update to retry generation if calibration finishes?
-                    // actually base.UpdateTask calls GenerateNewPath() if currentPath is null.
-                    // If we are calibrating, we shouldn't generate a path yet.
                     return; 
                 }
             }
         }
 
+        [Header("UI")]
+        [SerializeField] private TMPro.TextMeshProUGUI timerText;
+
         protected override void UpdateTask()
         {
+            // Debug Input status periodically
+            if (Time.frameCount % 60 == 0)
+            {
+                 Debug.Log($"[PathTask] UpdateTask Frame: {Time.frameCount}. InputRaw: {inputHandler.IsStylusPressed}. Path: {currentPath != null}. TimerText: {timerText != null}");
+            }
+
             // If calibrating, do nothing else
             if (calibrationManager != null && !calibrationManager.IsCalibrated && 
                 adaptiveController != null && adaptiveController.CurrentLevel == DifficultyLevel.Easy)
             {
-                // Wait for user to finish calibration
-                // Maybe show a hint "Please calibrate table"
+                if (Time.frameCount % 60 == 0) Debug.Log("[PathTask] Blocked by Calibration Check");
                 return;
             }
 
@@ -92,54 +102,109 @@ namespace NeuroReachVR.Tasks
                 else
                 {
                     // Session Complete
-                    Debug.Log("[PathTask] Session Complete!");
-                    // End the task or return to menu?
-                    // For now, let's just stop generating.
+                    if (Time.frameCount % 60 == 0) Debug.Log("[PathTask] Session Complete");
+                    if (timerText != null) timerText.text = "Finished";
                     return;
                 }
             }
             
-            if (currentPath == null) return;
-
-            // 2. Custom Input Logic
-            // Press -> Ink
-            // Release -> Finish
-            
-            bool isPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching;
-            
-            // Logic:
-            // If Pressed:
-            //   - If !strokeStarted: This is a NEW stroke. Start it.
-            //   - Update Trace.
-            // If Released:
-            //   - If strokeStarted: The USER RELEASED. End the trial.
-            
-            if (isPressed)
+            if (currentPath == null) 
             {
-                if (!strokeStarted)
+                if (Time.frameCount % 60 == 0) Debug.Log("[PathTask] CurrentPath is NULL after generation attempt.");
+                return;
+            }
+
+            // 2. Timer Logic
+            float timeCheck = elapsedTime - pathStartTime;
+            float timeLeft = Mathf.Max(0, trialDuration - timeCheck);
+             
+            // Update UI
+            if (timerText != null)
+            {
+                timerText.text = $"{timeLeft:F1}s";
+            }
+            // Fallback: Create UI if missing
+            else if (currentPath != null && Time.frameCount % 60 == 0) // Try once a second
+            {
+                 CreateTimerUI();
+            }
+
+            if (timeCheck > trialDuration)
+            {
+                Debug.Log($"[PathTask] Time limit reached. Elapsed: {elapsedTime:F2}, Start: {pathStartTime:F2}, Diff: {timeCheck:F2} > {trialDuration}");
+                OnPathCompleted();
+                return;
+            }
+
+            // 3. Custom Input Logic with DEBOUNCE
+            // Debounce is critical to avoid micro-strokes that don't render.
+            
+            bool rawPressed = inputHandler.IsStylusPressed || inputHandler.IsPinching;
+            
+            if (rawPressed)
+            {
+                // DEBOUNCE PRESS
+                if (!wasPressed)
                 {
-                    Debug.Log("[PathTask] Stroke Started");
-                    strokeStarted = true;
-                    currentPath.StartNewStroke();
+                    if (Time.time - lastReleaseTime > 0.05f) // 50ms debouce
+                    {
+                        wasPressed = true;
+                        isDebounced = true;
+                        Debug.Log("[PathTask] Stroke Started (Debounced)");
+                        currentPath.StartNewStroke();
+                    }
                 }
                 
-                // Update Tracing
-                 if (currentPath != null)
+                // Drawing
+                if (isDebounced)
                 {
-                    currentPath.UpdateTracing(inputHandler.Position);
+                    if (currentPath != null)
+                    {
+                        // USE CORRECTED TRANSFORM (Fixes alignment)
+                        GetCalculatedInkTransform(out Vector3 inputPos, out Quaternion rot);
+                        currentPath.UpdateTracing(inputPos);
+                    }
                 }
             }
             else
             {
-                // Not Pressed
-                if (strokeStarted)
+                // DEBOUNCE RELEASE
+                if (wasPressed)
                 {
-                    // Released!
-                    Debug.Log("[PathTask] Button Released - Finishing Trial");
-                    strokeStarted = false;
-                    OnPathCompleted();
+                   if (Time.time - lastPressTime > 0.05f)
+                   {
+                       wasPressed = false;
+                       isDebounced = false;
+                       lastReleaseTime = Time.time;
+                       Debug.Log("[PathTask] Stoke Ended (Debounced)");
+                   }
                 }
             }
+            
+            // Track last press time for release debounce
+            if (rawPressed) lastPressTime = Time.time;
+        }
+
+        private void CreateTimerUI()
+        {
+             // Try to find specific Timer Text first
+             GameObject tObj = GameObject.Find("TaskTimerText");
+             if (tObj != null) 
+             {
+                 timerText = tObj.GetComponent<TMPro.TextMeshProUGUI>();
+                 return;
+             }
+
+             // Fallback to searching all (in case name is slightly different or inactive)
+             var texts = FindObjectsByType<TMPro.TextMeshProUGUI>(FindObjectsSortMode.None);
+             foreach(var t in texts) 
+             {
+                 if (t.name.ToLower().Contains("timer")) 
+                 {
+                     timerText = t;
+                     return;
+                 }
+             }
         }
 
         protected override void GenerateNewPath()
@@ -156,7 +221,6 @@ namespace NeuroReachVR.Tasks
             // Positioning
             if (!isTableMode)
             {
-                // Use closer interaction depth (0.4f) for closer reach
                 PositionPathInFrontOfCamera(0.4f);
             }
             
@@ -166,6 +230,9 @@ namespace NeuroReachVR.Tasks
             // Instantiate
             GameObject pathObj = Instantiate(pathPrefab.gameObject);
             pathObj.transform.SetParent(null);
+            
+            pathObj.transform.position = Vector3.zero; 
+            pathObj.transform.rotation = Quaternion.identity;
             
             currentPath = pathObj.GetComponent<TraceablePath>();
             if (currentPath == null)
@@ -187,14 +254,19 @@ namespace NeuroReachVR.Tasks
             else
             {
                 currentPath.SetAlignment(LineAlignment.View);
-                currentPath.transform.rotation = Quaternion.identity;
             }
             
             isTracing = true;
-            pathStartTime = elapsedTime;
+
+            // CRITICAL: Ensure Timer Reset
+            pathStartTime = elapsedTime; 
             
-            Debug.Log($"[PathTask] Generated Trial {currentTrialIndex + 1}/{trialsPerSession}");
+            wasPressed = false; // Reset input state
+            
+            Debug.Log($"[PathTask] Generated Trial {currentTrialIndex + 1}/{trialsPerSession}. StartTime: {pathStartTime:F2}, Duration: {trialDuration}s");
         }
+        
+
 
          protected override List<Vector3> GeneratePathPoints()
         {
@@ -210,17 +282,9 @@ namespace NeuroReachVR.Tasks
 
         private List<Vector3> GenerateTablePath()
         {
-            // Similar to Spiral but purely random/curved paths for this task? 
-            // Or just a line/shape?
-            // "The user sees a given path... and traces it"
-            // Let's generate a random curve for variety.
-            
             Vector3 center = calibrationManager.PlaneCenter;
             Quaternion rotation = calibrationManager.PlaneRotation;
             Vector2 zoneSize = calibrationManager.ZoneSize;
-            
-            // Generate a random Bezier curve or simple shape within bounds
-            // Let's use a simple Sine wave or Curve for now.
             
             int segments = pathSegments;
             List<Vector3> points = new List<Vector3>();
@@ -231,7 +295,6 @@ namespace NeuroReachVR.Tasks
             Vector3 startLocal = new Vector3(-width * 0.4f, 0, -height * 0.2f);
             Vector3 endLocal = new Vector3(width * 0.4f, 0, height * 0.2f);
             
-            // Add some randomness based on trial index
             Random.InitState(currentTrialIndex * 1337); 
             
             Vector3 cp1 = new Vector3(Random.Range(-width*0.3f, width*0.3f), 0, Random.Range(-height*0.3f, height*0.3f));
@@ -239,13 +302,11 @@ namespace NeuroReachVR.Tasks
             Vector3 planeRight = rotation * Vector3.right;
             Vector3 planeForward = rotation * Vector3.forward;
             
-            // Simple Quadratic Bezier
             for (int i = 0; i <= segments; i++)
             {
                 float t = i / (float)segments;
                 Vector3 p = CalculateBezierPoint(t, startLocal, cp1, endLocal);
                 
-                // Transform to World
                 Vector3 worldP = center + (planeRight * p.x) + (planeForward * p.z);
                 points.Add(worldP);
             }
@@ -258,13 +319,12 @@ namespace NeuroReachVR.Tasks
 
         private List<Vector3> GenerateAirPath()
         {
-             // Use standard PathGenerator but maybe randomize it?
-             // Taking logic from base but ensuring it's "Air" centered.
-             // Base PositionPathInFrontOfCamera sets pathStart/End.
+             // Use Center-to-Right logic from PositionPathInFrontOfCamera
+             // GenerateCurve requires Start, End, and Control Point.
              
-             // Let's just use a Curve.
+             // Control point: Midpoint + Up 10cm
              return PathGenerator.GenerateCurve(pathStart, pathEnd, 
-                     (pathStart + pathEnd) * 0.5f + Vector3.up * 0.2f, pathSegments);
+                     (pathStart + pathEnd) * 0.5f + Vector3.up * 0.1f, pathSegments);
         }
         
         private Vector3 CalculateBezierPoint(float t, Vector3 p0, Vector3 p1, Vector3 p2)
@@ -280,10 +340,22 @@ namespace NeuroReachVR.Tasks
 
         protected override void OnPathCompleted()
         {
+            float completionTime = elapsedTime - pathStartTime;
+            float timeLeft = trialDuration - completionTime;
+            
+            // STRICT CHECK: Only allow completion if timer is done OR if we explicitly force it (e.g. error)
+            // If called early, LOG IT and RETURN (don't destroy path)
+            if (timeLeft > 0.1f)
+            {
+                Debug.LogWarning($"[PathTask] OnPathCompleted called EARLY! TimeLeft: {timeLeft:F2}s. IGNORING completion.");
+                return;
+            }
+
+            Debug.Log($"[PathTask] Path Completed ON TIME. Elapsed: {completionTime:F2}s, Duration: {trialDuration}s");
+
             // Check Accuracy
             float accuracy = currentPath.Accuracy;
             bool success = accuracy >= minAccuracy;
-            float completionTime = elapsedTime - pathStartTime;
             
             Debug.Log($"[PathTask] Trial {currentTrialIndex + 1} Completed. Accuracy: {accuracy:P1}");
             
@@ -296,15 +368,19 @@ namespace NeuroReachVR.Tasks
             else
             {
                 feedback?.PlayError(currentPath.transform.position);
-                IncrementError(); // Or just count it as an attempt
+                IncrementError(); 
             }
             
             // Report
             ReportAttempt(completionTime, success, accuracy);
             
-            // Cleanup
+            // Cleanup - DESTROY or HIDE immediately (as requested)
+            // User requested: "ink drawn by the user for this path should also disapear"
+            // Destroying the path object (which contains the ink mesh) handles this.
+            
             completedPaths.Add(currentPath);
-            currentPath.gameObject.SetActive(false); // Hide immediately
+            currentPath.gameObject.SetActive(false); 
+            Destroy(currentPath.gameObject); // Destroy creates cleaner state
             currentPath = null;
             isTracing = false;
             
@@ -317,7 +393,6 @@ namespace NeuroReachVR.Tasks
             else
             {
                 Debug.Log("[PathTask] All trials completed.");
-                // Optional: Show Session Summary Interaction?
             }
         }
         
@@ -339,15 +414,24 @@ namespace NeuroReachVR.Tasks
 
             Debug.Log($"[PathTask] Positioning path. Camera: {mainCam.name}, Pos: {mainCam.transform.position}, Fwd: {mainCam.transform.forward}");
             
-            // Update class member variables, do not declare local ones
-            pathStart = mainCam.transform.position + (mainCam.transform.forward * depth); 
-            pathEnd = pathStart + (mainCam.transform.right * 0.3f); // 30cm wide path
+            // Center position based on Camera Forward
+            Vector3 centerPos = mainCam.transform.position + (mainCam.transform.forward * depth); 
+            
+            // Total width of the path (user interaction width)
+            // Reduced to 20cm (0.2f) for "Center of FOV" comfort (user requested center)
+            float totalWidth = 0.2f; 
+            float halfWidth = totalWidth * 0.5f;
+
+            // Define Start and End symmetrically around the center
+            // Start on Left, End on Right
+            pathStart = centerPos - (mainCam.transform.right * halfWidth);
+            pathEnd = centerPos + (mainCam.transform.right * halfWidth);
 
             // Reset task transform to world zero so points are absolute
             transform.position = Vector3.zero;
             transform.rotation = Quaternion.identity;
             
-            Debug.Log($"[PathTask] Positioned path using Transform: Start={pathStart}, End={pathEnd} (Depth {depth})");
+            Debug.Log($"[PathTask] Positioned path. Center: {centerPos}, Start: {pathStart}, End: {pathEnd}");
         }
     }
 }

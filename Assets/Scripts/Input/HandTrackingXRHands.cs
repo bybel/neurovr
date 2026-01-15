@@ -42,8 +42,8 @@ namespace NeuroReachVR.Input
 
         private void Update()
         {
-            if (!isInitialized)
-                InitializeHandTracking();
+            // Removed auto-init to prevent fighting with InputHandler. 
+            // Initialization is now strictly controlled via StartTracking/StopTracking.
 
             if (IsTracking)
             {
@@ -54,6 +54,8 @@ namespace NeuroReachVR.Input
 
         private void InitializeHandTracking()
         {
+            if (isInitialized && handSubsystem != null && handSubsystem.running) return;
+
             // Get XR Hand subsystem from SubsystemManager
             var subsystems = new List<XRHandSubsystem>();
             SubsystemManager.GetSubsystems(subsystems);
@@ -69,12 +71,33 @@ namespace NeuroReachVR.Input
                 return;
             }
 
+            // Start the subsystem if not running
+            if (!handSubsystem.running)
+            {
+                 handSubsystem.Start();
+            }
+
             hand = handType == Handedness.Left
                 ? handSubsystem.leftHand
                 : handSubsystem.rightHand;
 
             isInitialized = true;
             Debug.Log($"[HandTrackingXRHands] Initialized for {handType} hand using XR Hands package");
+        }
+
+        public void StopTracking()
+        {
+            if (handSubsystem != null && handSubsystem.running)
+            {
+                handSubsystem.Stop();
+                Debug.Log($"[HandTrackingXRHands] Stopped subsystem for {handType}");
+            }
+            isInitialized = false;
+        }
+
+        public void StartTracking()
+        {
+            InitializeHandTracking();
         }
 
         private void UpdatePinchState()

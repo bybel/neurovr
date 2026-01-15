@@ -67,8 +67,20 @@ namespace NeuroReachVR.Input
         {
             if (inputActions == null)
             {
-                Debug.LogWarning("[StylusInputActions] Input Actions asset not assigned! Please assign 'Input Actions' in inspector.");
-                return;
+                // Try to auto-load from Resources
+                inputActions = Resources.Load<InputActionAsset>("NeuroInputActions");
+                if (inputActions == null)
+                {
+                    Debug.LogWarning("[StylusInputActions] Input Actions asset not assigned and could not be loaded from Resources!");
+                    return;
+                }
+                Debug.Log($"[StylusInputActions] Auto-loaded Input Actions from Resources.");
+            }
+
+            // Ensure the asset is enabled to register Action Sets with OpenXR
+            if (inputActions != null)
+            {
+                inputActions.Enable();
             }
 
             var stylusMap = inputActions.FindActionMap(stylusMapName);

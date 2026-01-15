@@ -66,6 +66,11 @@ public class HUDManager : MenuManager
     [SerializeField] private TextMeshProUGUI progressText;
     [SerializeField] private TextMeshProUGUI mainMenuTitleText;
     
+    public void SetProgressText(string text)
+    {
+        if (progressText != null) progressText.text = text;
+    }
+    
     [Header("Stylus Visuals")]
     [SerializeField] private Vector3 stylusPositionOffset = Vector3.zero;
     [SerializeField] private Vector3 stylusRotationOffset = new Vector3(60, 0, 0);
@@ -195,6 +200,22 @@ public class HUDManager : MenuManager
         // Add Collider for VR
         BoxCollider col = btnObj.AddComponent<BoxCollider>();
         col.size = new Vector3(120, 50, 1);
+
+        // --- TIMER TEXT ---
+        GameObject timerObj = new GameObject("TaskTimerText");
+        timerObj.transform.SetParent(gameplayHUD.transform, false);
+        timerText = timerObj.AddComponent<TextMeshProUGUI>(); // Assign to field
+        timerText.text = "Time: --";
+        timerText.fontSize = 24;
+        timerText.alignment = TextAlignmentOptions.Center;
+        timerText.color = Color.yellow;
+        
+        RectTransform timerRect = timerObj.GetComponent<RectTransform>();
+        timerRect.sizeDelta = new Vector2(200, 50);
+        timerRect.anchorMin = new Vector2(0.5f, 1.0f); // Top
+        timerRect.anchorMax = new Vector2(0.5f, 1.0f);
+        timerRect.pivot = new Vector2(0.5f, 1.0f);
+        timerRect.anchoredPosition = new Vector2(0, -10); // Slightly down from top
         
         RegisterMenu("gameplay", gameplayHUD);
     }
@@ -802,6 +823,9 @@ public class HUDManager : MenuManager
 
     // --- Public API for Game Events ---
 
+    // START FIX: Timer Update Logic
+    private TextMeshProUGUI timerText;
+
     public void UpdateScore(int newScore)
     {
         score = newScore;
@@ -854,8 +878,21 @@ public class HUDManager : MenuManager
                 {
                     // Optional: Smoothly follow? Or just ensure it's visible?
                     // For now, let's just leave it. If it's WorldSpace, it stays where it is.
-                    // But if it's invisible, maybe we should force it?
                 }
+            }
+        }
+
+        // TIMER UPDATE
+        if (gameManager != null && gameManager.CurrentTask != null && gameManager.CurrentTask.IsActive)
+        {
+            if (timerText != null)
+            {
+                float remaining = gameManager.CurrentTask.RemainingTime;
+                timerText.text = $"Time: {remaining:F0}s";
+                
+                // Optional: Change color if running out?
+                if (remaining < 10f) timerText.color = Color.red;
+                else timerText.color = Color.yellow;
             }
         }
     }

@@ -39,6 +39,7 @@ namespace NeuroReachVR.Tasks
         
         private NeuroReachVR.Visuals.StylusVisualizer stylusVisualizer;
         private NeuroReachVR.UI.VRUIInputManager vruiInputManager;
+        private HUDManager hudManager;
 
         protected override void Start()
         {
@@ -46,6 +47,7 @@ namespace NeuroReachVR.Tasks
             
             stylusVisualizer = FindFirstObjectByType<NeuroReachVR.Visuals.StylusVisualizer>();
             vruiInputManager = FindFirstObjectByType<NeuroReachVR.UI.VRUIInputManager>();
+            hudManager = FindFirstObjectByType<HUDManager>();
             
             // Cleaned up misleading logs - we use Manual Offsets now.
             
@@ -71,6 +73,33 @@ namespace NeuroReachVR.Tasks
                     Debug.LogError($"[{GetType().Name}] TraceablePath prefab not assigned! Please assign in Inspector or place in Resources folder.");
             }
         }
+
+        // ... Skiped Logic ...
+        
+        private System.Collections.IEnumerator WaitAndSpawnNext()
+        {
+            // Wait 3 seconds with the Old Path still visible
+             for (int i = 3; i > 0; i--)
+            {
+                if (hudManager != null) hudManager.SetProgressText($"Next Path in {i}...");
+                else Debug.Log($"Next Path in {i}..."); // Fallback log
+                yield return new WaitForSeconds(1.0f);
+            }
+             if (hudManager != null) hudManager.SetProgressText("");
+
+            isTracing = false; // Stop drawing now
+
+            // NOW destroy the old path
+            if (currentPath != null)
+            {
+                Destroy(currentPath.gameObject);
+                currentPath = null;
+            }
+
+            // And generate the new one
+            isWaitingForNextTrial = false;
+            GenerateNewPath();
+        }
         
         [ContextMenu("Reset Ink Offsets")]
         public void ResetInkOffsets()
@@ -83,30 +112,30 @@ namespace NeuroReachVR.Tasks
         protected override void UpdateTask()
         {
             // 1. Ensure path exists (Visuals first!)
-            if (currentPath == null)
+            if (currentPath == null && !isWaitingForNextTrial)
             {
                 GenerateNewPath();
-                // Don't return here, allow input check to proceed
             }
             
             // 2. Check Input
-            // Support all input modes: Stylus, Simulator (mouse), Hand tracking
             if (!inputHandler.HasValidInput)
             {
-                // FORCE LOGGING to debug "Missing Stroke" issue
-                if (Time.frameCount % 120 == 0)
+                 if (Time.frameCount % 120 == 0)
                     Debug.LogWarning($"[PathTracing] HasValidInput is FALSE. Mode: {inputHandler.CurrentMode}. Check connection or Input Actions.");
                 return;
             }
             
-            if (currentPath == null) return; // Should be handled above, but safety check
+            if (currentPath == null) return; 
             
-            if (currentPath.IsComplete)
+            // 3. Check for Completion (Only if not already done/waiting)
+            if (currentPath.IsComplete && !isWaitingForNextTrial)
             {
                 OnPathCompleted();
-                return;
+                // Ensure we continue to update visuals below so user can keep drawing!
             }
             
+            // 4. Update Tracing (Visuals & Logic)
+            // Allow drawing even if complete, as long as path exists (during the 3s wait)
             UpdateTracing();
         }
         
@@ -156,15 +185,51 @@ namespace NeuroReachVR.Tasks
             // RESET INPUT STATE
             isDebouncedPressed = false;
             lastPressTime = 0;
-            // Ensure we don't instantly trigger if they are holding it?
-            // Actually, if they are holding it, we might want to start drawing?
-            // But if we reset to false, and they ARE holding it, the Update loop will see Raw=True, Debounced=False
-            // And then it will enter the debounce logic and eventually trigger StartNewStroke!
-            // This is exactly what we want.
-            // Just ensure lastReleaseTime allows immediate trigger if they are holding?
-            // No, we want them to repress or at least wait for debounce threshold.
             lastReleaseTime = Time.time - 5f; // clear release debounce lockout
         }
+
+        // ... Skiped Logic ...
+        
+        private bool isWaitingForNextTrial = false;
+
+        protected virtual void OnPathCompleted()
+        {
+            if (isWaitingForNextTrial) return; // Prevent double completion
+
+            float accuracy = currentPath.Accuracy;
+            bool success = accuracy >= minAccuracy;
+            float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
+            
+            Debug.Log($"[PathTracingTask] Path completed! Accuracy: {accuracy:P1}, Required: {minAccuracy:P1}, Success: {success}");
+            
+            if (success)
+            {
+                pathsCompleted++;
+                int scoreToAdd = Mathf.RoundToInt(accuracy * 100);
+                AddScore(scoreToAdd);
+                Debug.Log($"[PathTracingTask] Score added: {scoreToAdd}, Total paths completed: {pathsCompleted}");
+                feedback?.PlaySuccess(currentPath.transform.position);
+            }
+            else
+            {
+                IncrementError();
+                Debug.Log($"[PathTracingTask] Path failed - accuracy too low");
+                feedback?.PlayError(currentPath.transform.position);
+            }
+            
+            // Report attempt to adaptive difficulty system
+            ReportAttempt(completionTime, success, accuracy);
+            
+            // DO NOT DESTROY YET. Leave it visible for feedback.
+            isWaitingForNextTrial = true;
+            // keep tracing active so user can draw during wait.
+            // isTracing = false; 
+            
+            // Start Delay for next path
+            StartCoroutine(WaitAndSpawnNext());
+        }
+        
+
         
         /// <summary>
         /// Positions the path start and end points in front of the camera
@@ -218,7 +283,7 @@ namespace NeuroReachVR.Tasks
 
         [Header("Debug Visuals")]
         [SerializeField] private bool showDebugInk = false; // Disabled by default
-        [SerializeField] private bool showInputTrail = false;
+
         [SerializeField] private Vector3 debugGhostRotationOffset = new Vector3(90, 0, 0);
         private GameObject debugInkCursor;
         private GameObject debugInkStylus; // A "Ghost Stylus" to show rotation
@@ -296,7 +361,7 @@ namespace NeuroReachVR.Tasks
             */
         }
 
-        private void GetCalculatedInkTransform(out Vector3 position, out Quaternion rotation)
+        protected void GetCalculatedInkTransform(out Vector3 position, out Quaternion rotation)
         {
             Vector3 inputPos = inputHandler.Position;
             Quaternion inputRot = inputHandler.Rotation; 
@@ -353,7 +418,7 @@ namespace NeuroReachVR.Tasks
                     }
                 }
             }
-            else
+            else 
             {
                 // Raw release
                 if (isDebouncedPressed)
@@ -390,54 +455,6 @@ namespace NeuroReachVR.Tasks
             }
             
             inputWasPressed = isDebouncedPressed;
-        }
-        
-        protected virtual void OnPathCompleted()
-        {
-            float accuracy = currentPath.Accuracy;
-            bool success = accuracy >= minAccuracy;
-            float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
-            
-            Debug.Log($"[PathTracingTask] Path completed! Accuracy: {accuracy:P1}, Required: {minAccuracy:P1}, Success: {success}");
-            
-            if (success)
-            {
-                pathsCompleted++;
-                int scoreToAdd = Mathf.RoundToInt(accuracy * 100);
-                AddScore(scoreToAdd);
-                Debug.Log($"[PathTracingTask] Score added: {scoreToAdd}, Total paths completed: {pathsCompleted}");
-                feedback?.PlaySuccess(currentPath.transform.position);
-            }
-            else
-            {
-                IncrementError();
-                Debug.Log($"[PathTracingTask] Path failed - accuracy too low");
-                feedback?.PlayError(currentPath.transform.position);
-            }
-            
-            // Report attempt to adaptive difficulty system
-            ReportAttempt(completionTime, success, accuracy);
-            
-            completedPaths.Add(currentPath);
-            // Destroy immediately to clear view (requested by user)
-            if (currentPath != null) 
-            {
-               Destroy(currentPath.gameObject);
-               // Remove from list so we don't try to destroy null later
-               completedPaths.Remove(currentPath); 
-            }
-            
-            currentPath = null;
-            isTracing = false;
-            
-            // Start Delay for next path
-            StartCoroutine(WaitAndSpawnNext());
-        }
-        
-        private System.Collections.IEnumerator WaitAndSpawnNext()
-        {
-            yield return new WaitForSeconds(1.5f);
-            GenerateNewPath();
         }
         
         protected override void OnTaskStarted()

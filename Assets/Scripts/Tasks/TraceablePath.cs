@@ -72,7 +72,16 @@ namespace NeuroReachVR.Tasks
             strokes = new List<List<Vector3>>();
             
             // Disable legacy LineRenderer if present
-            if (targetLineRenderer != null) targetLineRenderer.enabled = false;
+            if (targetLineRenderer != null) 
+            {
+                targetLineRenderer.enabled = false;
+            }
+            else
+            {
+                // Force check component
+                var lr = GetComponent<LineRenderer>();
+                if (lr != null) lr.enabled = false;
+            }
 
             // Setup Target Mesh Components FIRST
             SetupTargetMesh();
@@ -216,20 +225,18 @@ namespace NeuroReachVR.Tasks
 
         public void UpdateTracing(Vector3 worldPosition)
         {
-            if (!isActive || targetPath == null || targetPath.Count == 0) return;
+            if (!isActive || targetPath == null || targetPath.Count == 0 || currentSegment >= targetPath.Count - 1) return;
 
             // Ensure we have a stroke to add to
             if (currentStroke == null)
             {
-                Debug.LogWarning("[TraceablePath] UpdateTracing called but currentStroke is null. Auto-starting stroke.");
+                // Auto-start stroke if missing
                 StartNewStroke();
             }
             
-            // Avoid adding duplicate points too close together (optimization)
-            // Use worldPosition for distance check to avoid error if localPosition isn't computed yet?
-            // Actually, let's compute localPosition first.
             Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
 
+            // Avoid adding duplicate points too close together (optimization)
             if (currentStroke.Count > 0 && Vector3.Distance(currentStroke[currentStroke.Count - 1], localPosition) < 0.001f)
             {
                 return;
@@ -237,33 +244,48 @@ namespace NeuroReachVR.Tasks
 
             currentStroke.Add(localPosition);
 
-            // Logic for Accuracy/Progress (same as before)
-            // We verify against the target properties using the stylus position
+            // Logic for Accuracy/Progress
+            // Enforce sequential progress: Don't jump too far ahead!
             if (currentSegment < targetPath.Count)
             {
                 float minDeviation = float.MaxValue;
-                int closestSegment = currentSegment;
-                int lookAhead = Mathf.Min(currentSegment + 10, targetPath.Count);
+                int bestSegment = -1;
+                
+                // CRITICAL FIX: Only look ahead a small amount to prevent jumping to the end of a spiral
+                // 10 points or 10% of path, whichever is smaller? 
+                // Let's rely on fixed count. 10 might be too much if points are dense.
+                // Let's use distance check. If the user is closer to a future point than the current one, advance.
+                // BUT only if that future point is "connected" to where we are.
+                
+                int lookAhead = Mathf.Min(currentSegment + 5, targetPath.Count); 
+                
                 for (int i = currentSegment; i < lookAhead; i++)
                 {
-                    // Use localPosition for distance check against targetPath (which is Local)
                     float dist = Vector3.Distance(localPosition, targetPath[i]);
                     if (dist < minDeviation)
                     {
                         minDeviation = dist;
-                        closestSegment = i;
+                        bestSegment = i;
                     }
                 }
 
-                // FIX: Tolerance was 0.3f (30cm), causing instant completion!
-                // Reduced to Max(width*3, 2cm)
-                float tolerance = Mathf.Max(pathWidth * 3f, 0.02f);
+                // Tolerance Check
+                float tolerance = Mathf.Max(pathWidth * 4f, 0.03f); // 3cm tolerance
                 
-                if (minDeviation < tolerance)
+                if (minDeviation < tolerance && bestSegment != -1)
                 {
                     totalDeviation += minDeviation;
                     deviationCount++;
-                    currentSegment = closestSegment + 1;
+                    
+                    // Advance segment if we are close to the target point
+                    // Note: We might skip points if the user moves fast.
+                    // If bestSegment > currentSegment, we advanced.
+                    if (bestSegment >= currentSegment)
+                    {
+                        // "Fill in" skipped segments for deviation calculation? 
+                        // For now, just jump currentSegment to bestSegment + 1
+                        currentSegment = bestSegment + 1;
+                    }
                 }
             }
 
