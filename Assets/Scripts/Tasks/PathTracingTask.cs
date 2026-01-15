@@ -21,7 +21,7 @@ namespace NeuroReachVR.Tasks
         
         [Header("Tracing Settings")]
         [SerializeField] protected float pathWidth = 0.0025f; // 0.25cm Target
-        [SerializeField] protected int pathSegments = 5;
+        [SerializeField] protected int pathSegments = 100; // INCREASED from 5 to 100 for high-res validation
         [SerializeField] protected float minAccuracy = 0.5f; // Lowered from 0.7 for easier gameplay
         
         [Header("Ink Alignment")]
@@ -266,6 +266,9 @@ namespace NeuroReachVR.Tasks
         
         protected virtual List<Vector3> GeneratePathPoints()
         {
+            // FORCE Resolution to prevent low-poly path issues (Inspector override fix)
+            if (pathSegments < 50) pathSegments = 100;
+
             return pathType switch
             {
                 PathType.Line => PathGenerator.GenerateLine(pathStart, pathEnd, pathSegments),
@@ -445,6 +448,8 @@ namespace NeuroReachVR.Tasks
 
                 if (currentPath != null)
                 {
+                    // FIX: Auto-break stroke if distance jumped too far (e.g. tracking glitch or rapid movement)
+                    // This prevents "Connecting Lines" if debounce failed to catch a lift.
                     currentPath.UpdateTracing(inputPos);
                 }
             }

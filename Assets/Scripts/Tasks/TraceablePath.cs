@@ -237,9 +237,20 @@ namespace NeuroReachVR.Tasks
             Vector3 localPosition = transform.InverseTransformPoint(worldPosition);
 
             // Avoid adding duplicate points too close together (optimization)
-            if (currentStroke.Count > 0 && Vector3.Distance(currentStroke[currentStroke.Count - 1], localPosition) < 0.001f)
+            if (currentStroke.Count > 0)
             {
-                return;
+                float dist = Vector3.Distance(currentStroke[currentStroke.Count - 1], localPosition);
+                if (dist < 0.001f) return;
+                
+                // CRITICAL FIX: If distance is too large (e.g. > 5cm), assume it's a new stroke
+                // caused by tracking jump or missed pen lift. Break the line.
+                if (dist > 0.05f) 
+                {
+                    StartNewStroke();
+                    // Need to get the new list reference
+                    // StartNewStroke creates 'currentStroke' as new list.
+                    // We must add the point to THIS new list.
+                }
             }
 
             currentStroke.Add(localPosition);

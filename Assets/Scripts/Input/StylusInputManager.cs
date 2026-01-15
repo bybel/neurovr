@@ -508,7 +508,8 @@ namespace NeuroReachVR.Input
                 }
             }
             
-            return lastPressure;
+            // If we can't read pressure, return 0 to prevent "sticky ink"
+            return 0f;
         }
         
         private Vector2 GetTilt()
