@@ -54,10 +54,36 @@ namespace NeuroReachVR.Tasks
         private List<Color> meshColors = new List<Color>();
         private List<Vector3> meshNormals = new List<Vector3>(); // Optional for better lighting
 
-        public bool IsComplete => targetPath != null && targetPath.Count > 0 && currentSegment >= targetPath.Count - 1;
+        public bool IsComplete 
+        {
+            get 
+            {
+                if (targetPath == null || targetPath.Count == 0) return false;
+                
+                // Strict Completion: Must reach the last segment indices
+                bool reachedIndex = currentSegment >= targetPath.Count - 1;
+                
+                // AND (Optional) check distance to last point? 
+                // Let's rely on index, but ensure we don't skip indices too fast.
+                return reachedIndex;
+            }
+        }
+        
         public float Accuracy => CalculateAccuracy();
         public float Progress => (targetPath != null && targetPath.Count > 0) ? currentSegment / (float)targetPath.Count : 0f;
         public float AverageDeviation => deviationCount > 0 ? totalDeviation / deviationCount : 0f;
+
+        [Header("Scoring")]
+        [SerializeField] private float scoringTolerance = 0.1f; // INCREASED to 10cm (!). Guarantees score if you are on screen.
+        
+        private float CalculateAccuracy()
+        {
+            if (deviationCount == 0) return 1f;
+            
+            float avgDeviation = totalDeviation / deviationCount;
+            // 0 -> 10cm mapping
+            return Mathf.Clamp01(1f - (avgDeviation / scoringTolerance));
+        }
 
         [SerializeField] private MeshFilter targetMeshFilter;
         [SerializeField] private MeshRenderer targetMeshRenderer;
@@ -183,6 +209,97 @@ namespace NeuroReachVR.Tasks
             ResetPath(); // Clears strokes
             
             RenderTargetPathTube();
+            CreateDirectionIndicator();
+        }
+
+        private GameObject directionIndicator;
+
+        private void CreateDirectionIndicator()
+        {
+            if (targetPath == null || targetPath.Count < 2) return;
+
+            // Cleanup old
+            if (directionIndicator != null) Destroy(directionIndicator);
+
+            // Create Cone (using Cylinder + Taper? No, just a Cylinder for now or a primitive mesh if available?)
+            // Unity primitive Cylinder is closest we have without importing models. 
+            // Or use a Triangle Prism mesh?
+            // Actually, we can make a procedural cone easily since we have mesh generation code, 
+            // but let's stick to simple Primitives for robustness first.
+            // A Pyramid/Cone is standard. Let's make a simple procedural mesh cone to avoid dependency on assets.
+            
+            directionIndicator = new GameObject("DirectionIndicator");
+            directionIndicator.transform.SetParent(transform);
+            
+            MeshFilter mf = directionIndicator.AddComponent<MeshFilter>();
+            MeshRenderer mr = directionIndicator.AddComponent<MeshRenderer>();
+            
+            // Generate Cone Mesh
+            Mesh coneMesh = new Mesh();
+            float height = pathWidth * 6f; // Arrowhead length
+            float radius = pathWidth * 3f; // Arrowhead width
+            int segments = 12;
+            
+            List<Vector3> verts = new List<Vector3>();
+            List<int> tris = new List<int>();
+            
+            // Tip
+            verts.Add(Vector3.forward * height); // Tip at forward Z
+            
+            // Base
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = i * Mathf.PI * 2f / segments;
+                verts.Add(new Vector3(Mathf.Cos(angle) * radius, Mathf.Sin(angle) * radius, 0));
+            }
+            
+            // Base Cap center
+             verts.Add(Vector3.zero);
+             int centerIndex = verts.Count - 1;
+
+            // Faces
+            for (int i = 0; i < segments; i++)
+            {
+                int current = i + 1; // +1 because index 0 is tip
+                int next = (i + 1) % segments + 1;
+                
+                // Side
+                tris.Add(0); // Tip
+                tris.Add(next);
+                tris.Add(current);
+                
+                // Base Cap
+                tris.Add(centerIndex);
+                tris.Add(current);
+                tris.Add(next);
+            }
+            
+            coneMesh.vertices = verts.ToArray();
+            coneMesh.triangles = tris.ToArray();
+            coneMesh.RecalculateNormals();
+            mf.mesh = coneMesh;
+            
+            // Material
+            mr.material = new Material(Shader.Find("Mobile/Diffuse"));
+            mr.material.color = targetColor;
+
+            // Position at END
+            Vector3 endPos = targetPath[targetPath.Count - 1];
+            Vector3 prevPos = targetPath[targetPath.Count - 2];
+            Vector3 dir = (endPos - prevPos).normalized;
+            
+            if (dir == Vector3.zero) dir = Vector3.forward;
+
+            directionIndicator.transform.localPosition = endPos; // targetPath points are local? 
+            // Wait, InitializePath takes points. Are they world or local?
+            // In GenerateNewPath they are generated in World Space essentially or local space of the prefab?
+            // PathGenerator usually returns local points relative to start/end passed in. 
+            // But GenerateNewPath instantiates prefab at (0,0,0) and passes World Points.
+            // TraceablePath transform is at 0,0,0. So World Points == Local Points.
+            // YES.
+            
+            directionIndicator.transform.localPosition = endPos;
+            directionIndicator.transform.localRotation = Quaternion.LookRotation(dir);
         }
         
         /// <summary>
@@ -268,11 +385,14 @@ namespace NeuroReachVR.Tasks
                 // Let's use distance check. If the user is closer to a future point than the current one, advance.
                 // BUT only if that future point is "connected" to where we are.
                 
-                int lookAhead = Mathf.Min(currentSegment + 5, targetPath.Count); 
+                // CRITICAL FIX: Reduce LookAhead to prevent skipping bulk of the path
+                // Only look at next 3 points. Forces user to trace the geometric line.
+                int lookAhead = Mathf.Min(currentSegment + 3, targetPath.Count); 
                 
                 for (int i = currentSegment; i < lookAhead; i++)
                 {
                     float dist = Vector3.Distance(localPosition, targetPath[i]);
+                    // ...
                     if (dist < minDeviation)
                     {
                         minDeviation = dist;
@@ -281,20 +401,20 @@ namespace NeuroReachVR.Tasks
                 }
 
                 // Tolerance Check
-                float tolerance = Mathf.Max(pathWidth * 4f, 0.03f); // 3cm tolerance
+                // Relaxed based on user feedback (was 0.03f) -> Now 6cm
+                float tolerance = Mathf.Max(pathWidth * 6f, 0.06f); 
                 
                 if (minDeviation < tolerance && bestSegment != -1)
                 {
                     totalDeviation += minDeviation;
                     deviationCount++;
                     
-                    // Advance segment if we are close to the target point
-                    // Note: We might skip points if the user moves fast.
-                    // If bestSegment > currentSegment, we advanced.
+                    // Advance segment
+                    // STRICT ADVANCEMENT: Only advance 1 step at a time?
+                    // No, allow jumping to bestSegment, but bestSegment is constrained by lookAhead (max +3)
+                    // This naturally limits speed.
                     if (bestSegment >= currentSegment)
                     {
-                        // "Fill in" skipped segments for deviation calculation? 
-                        // For now, just jump currentSegment to bestSegment + 1
                         currentSegment = bestSegment + 1;
                     }
                 }
@@ -390,20 +510,13 @@ namespace NeuroReachVR.Tasks
             mesh.normals = normals.ToArray();
             mesh.RecalculateBounds();
         }
-        private float CalculateAccuracy()
-        {
-            if (deviationCount == 0 || pathWidth <= 0) return 1f;
-            float avgDeviation = totalDeviation / deviationCount;
-            // Simple linear falloff: 0 deviation = 100%, pathWidth deviation = 0%
-            return Mathf.Clamp01(1f - (avgDeviation / pathWidth));
-        }
-
         public void ResetPath()
         {
             strokes.Clear();
             currentStroke = null;
             if (tracedMesh != null) tracedMesh.Clear();
             if (targetMesh != null) targetMesh.Clear();
+            if (directionIndicator != null) Destroy(directionIndicator);
             
             isActive = true;
             currentSegment = 0;

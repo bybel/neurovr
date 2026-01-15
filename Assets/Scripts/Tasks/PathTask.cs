@@ -132,7 +132,7 @@ namespace NeuroReachVR.Tasks
             if (timeCheck > trialDuration)
             {
                 Debug.Log($"[PathTask] Time limit reached. Elapsed: {elapsedTime:F2}, Start: {pathStartTime:F2}, Diff: {timeCheck:F2} > {trialDuration}");
-                OnPathCompleted();
+                OnPathCompleted(false);
                 return;
             }
 
@@ -338,7 +338,7 @@ namespace NeuroReachVR.Tasks
             return p;
         }
 
-        protected override void OnPathCompleted()
+        protected override void OnPathCompleted(bool reachedEnd)
         {
             float completionTime = elapsedTime - pathStartTime;
             float timeLeft = trialDuration - completionTime;

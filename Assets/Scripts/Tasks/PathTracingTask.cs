@@ -130,11 +130,16 @@ namespace NeuroReachVR.Tasks
             // 3. Check for Completion (Only if not already done/waiting)
             if (currentPath.IsComplete && !isWaitingForNextTrial)
             {
-                OnPathCompleted();
+                OnPathCompleted(true); // Completed by reaching end
                 // Ensure we continue to update visuals below so user can keep drawing!
             }
+            // 4. Check for Timeout (New Requirement: Don't let users get stuck)
+            else if (!isWaitingForNextTrial && (elapsedTime - pathStartTime > maxTrialDuration))
+            {
+                 OnPathCompleted(false); // Completed by Timeout (did not reach end)
+            }
             
-            // 4. Update Tracing (Visuals & Logic)
+            // 5. Update Tracing (Visuals & Logic)
             // Allow drawing even if complete, as long as path exists (during the 3s wait)
             UpdateTracing();
         }
@@ -192,15 +197,17 @@ namespace NeuroReachVR.Tasks
         
         private bool isWaitingForNextTrial = false;
 
-        protected virtual void OnPathCompleted()
+        [SerializeField] protected float maxTrialDuration = 30.0f; // 30 seconds max per path
+
+        protected virtual void OnPathCompleted(bool reachedEnd)
         {
             if (isWaitingForNextTrial) return; // Prevent double completion
 
             float accuracy = currentPath.Accuracy;
-            bool success = accuracy >= minAccuracy;
+            bool success = reachedEnd && accuracy >= minAccuracy;
             float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
             
-            Debug.Log($"[PathTracingTask] Path completed! Accuracy: {accuracy:P1}, Required: {minAccuracy:P1}, Success: {success}");
+            Debug.Log($"[PathTracingTask] Path Finished. ReachedEnd: {reachedEnd}, Accuracy: {accuracy:P1}, Success: {success}");
             
             if (success)
             {
@@ -212,8 +219,14 @@ namespace NeuroReachVR.Tasks
             }
             else
             {
+                // If timed out, show specific feedback?
+                if (!reachedEnd) 
+                {
+                     if (hudManager != null) hudManager.SetProgressText("Time's Up!");
+                }
+                
                 IncrementError();
-                Debug.Log($"[PathTracingTask] Path failed - accuracy too low");
+                Debug.Log($"[PathTracingTask] Path failed - Accuracy low or Time out");
                 feedback?.PlayError(currentPath.transform.position);
             }
             
@@ -222,8 +235,6 @@ namespace NeuroReachVR.Tasks
             
             // DO NOT DESTROY YET. Leave it visible for feedback.
             isWaitingForNextTrial = true;
-            // keep tracing active so user can draw during wait.
-            // isTracing = false; 
             
             // Start Delay for next path
             StartCoroutine(WaitAndSpawnNext());
@@ -252,8 +263,9 @@ namespace NeuroReachVR.Tasks
             // Use 30% from center to edge for comfortable reach
             float screenOffset = Screen.width * 0.3f;
             
-            Vector3 screenLeft = new Vector3(Screen.width * 0.5f - screenOffset, Screen.height * 0.5f, 0);
-            Vector3 screenRight = new Vector3(Screen.width * 0.5f + screenOffset, Screen.height * 0.5f, 0);
+            // Raise paths slightly (0.65 instead of 0.5) based on user feedback "too low"
+            Vector3 screenLeft = new Vector3(Screen.width * 0.5f - screenOffset, Screen.height , 0);
+            Vector3 screenRight = new Vector3(Screen.width * 0.5f + screenOffset, Screen.height , 0);
             
             Ray leftRay = mainCam.ScreenPointToRay(screenLeft);
             Ray rightRay = mainCam.ScreenPointToRay(screenRight);

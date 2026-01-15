@@ -345,7 +345,7 @@ namespace NeuroReachVR.Tasks
             return path;
         }
         
-        protected override void OnPathCompleted()
+        protected override void OnPathCompleted(bool reachedEnd)
         {
             // Enhanced scoring based on angular velocity consistency
             float velocityScore = currentAngularVelocity >= minAngularVelocity && 
@@ -354,7 +354,7 @@ namespace NeuroReachVR.Tasks
             // For easier gameplay, use path accuracy directly without velocity penalty
             float pathAccuracy = currentPath.Accuracy;
             float combinedAccuracy = pathAccuracy; // Simplified: just use path accuracy
-            bool success = combinedAccuracy >= minAccuracy;
+            bool success = reachedEnd && combinedAccuracy >= minAccuracy;
             float completionTime = elapsedTime - pathStartTime; // Actual time spent tracing this path
             
             Debug.Log($"[SpiralTracingTask] Path completed! PathAccuracy: {pathAccuracy:P1}, RadialAccuracy: {radialAccuracy:P1}, VelocityScore: {velocityScore:F2}, CombinedAccuracy: {combinedAccuracy:P1}, Required: {minAccuracy:P1}, Success: {success}");
