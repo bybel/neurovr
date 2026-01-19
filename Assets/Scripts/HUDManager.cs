@@ -91,7 +91,8 @@ public class HUDManager : MenuManager
 
     protected override void Awake()
     {
-        base.Awake();
+        // DON'T call base.Awake() yet - we need to create menus first
+        // base.Awake() calls InitializeMenus() which requires menus to exist
         
         // Force user-calibrated offsets for Stylus Visualizer
         // This ensures the Inspector values don't override our hardcoded fix
@@ -144,6 +145,7 @@ public class HUDManager : MenuManager
         }
         
         FixAllCanvases();
+        RemoveAllOVROverlayCanvases(); // CRITICAL: Remove corrupted OVR components
         
         if (gameplayHUD == null)
         {
@@ -155,11 +157,23 @@ public class HUDManager : MenuManager
         {
             CreateTaskCompletionMenu();
         }
+        
+        // Ensure Pause Menu exists (create minimal version if missing)
+        if (pauseMenu == null)
+        {
+            Debug.LogWarning("[HUDManager] Pause menu not assigned in Inspector. Creating minimal version.");
+            pauseMenu = new GameObject("PauseMenu_Auto");
+            SetupVRMenu(pauseMenu);
+            // Add basic pause menu UI here if needed
+        }
+        
+        // NOW call base.Awake() which will call InitializeMenus()
+        // All menus should be created or assigned by this point
+        base.Awake();
     }
 
     private void CreateGameplayHUD()
     {
-        Debug.Log("[HUDManager] Creating Gameplay HUD (Exit Button) dynamically...");
         gameplayHUD = new GameObject("GameplayHUD_Auto");
         SetupVRMenu(gameplayHUD);
 
@@ -222,7 +236,6 @@ public class HUDManager : MenuManager
 
     private void CreateTaskCompletionMenu()
     {
-        Debug.Log("[HUDManager] Creating Task Completion Menu dynamically...");
         taskCompletionMenu = new GameObject("TaskCompletionMenu_Auto");
         SetupVRMenu(taskCompletionMenu);
         
@@ -291,7 +304,6 @@ public class HUDManager : MenuManager
     
     private void CreateDurationMenu()
     {
-        Debug.Log("[HUDManager] Creating Duration Menu dynamically...");
         durationMenu = new GameObject("DurationMenu_Auto");
         
         // Clone from Difficulty Menu if possible for consistency, otherwise create scratch
@@ -418,7 +430,6 @@ public class HUDManager : MenuManager
     {
         // Find ALL canvases, including inactive ones
         Canvas[] allCanvases = FindObjectsByType<Canvas>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-        Debug.Log($"[HUDManager] Found {allCanvases.Length} canvases in scene (including inactive). Fixing them...");
         
         foreach (var c in allCanvases)
         {
@@ -451,6 +462,14 @@ public class HUDManager : MenuManager
     private void SetupVRMenu(GameObject menuObj)
     {
         if (menuObj == null) return;
+
+        // CRITICAL FIX: Remove OVROverlayCanvas if present (causes magenta corruption)
+        var ovrOverlay = menuObj.GetComponent("OVROverlayCanvas");
+        if (ovrOverlay != null)
+        {
+            Debug.LogWarning($"[HUDManager] Removing corrupted OVROverlayCanvas from {menuObj.name}");
+            DestroyImmediate(ovrOverlay);
+        }
 
         Canvas canvas = menuObj.GetComponent<Canvas>();
         if (canvas == null) canvas = menuObj.AddComponent<Canvas>();
@@ -497,6 +516,33 @@ public class HUDManager : MenuManager
         foreach (Transform child in obj.transform)
         {
             if (child != null) SetLayerRecursively(child.gameObject, newLayer);
+        }
+    }
+
+    /// <summary>
+    /// Removes all OVROverlayCanvas components that cause rendering corruption
+    /// </summary>
+    private void RemoveAllOVROverlayCanvases()
+    {
+        // Find all GameObjects with OVROverlayCanvas components
+        // We search all GameObjects and check for the component by name
+        GameObject[] allObjects = FindObjectsByType<GameObject>(FindObjectsSortMode.None);
+        int removedCount = 0;
+        
+        foreach (GameObject obj in allObjects)
+        {
+            Component ovrOverlay = obj.GetComponent("OVROverlayCanvas");
+            if (ovrOverlay != null)
+            {
+                Debug.LogWarning($"[HUDManager] Removing OVROverlayCanvas from {obj.name}");
+                DestroyImmediate(ovrOverlay);
+                removedCount++;
+            }
+        }
+        
+        if (removedCount > 0)
+        {
+            Debug.Log($"[HUDManager] Removed {removedCount} OVROverlayCanvas component(s) in total");
         }
     }
 
@@ -854,13 +900,7 @@ public class HUDManager : MenuManager
             GameObject menuObj = menus[menuName];
             if (menuObj != null)
             {
-                Debug.Log($"[HUDManager] Positioning menu '{menuName}' (Active: {menuObj.activeSelf})");
                 PositionMenuInFrontOfUser(menuObj);
-                Debug.Log($"[HUDManager] Menu '{menuName}' position: {menuObj.transform.position}");
-            }
-            else
-            {
-                Debug.LogError($"[HUDManager] Menu '{menuName}' is null in dictionary!");
             }
         }
     }

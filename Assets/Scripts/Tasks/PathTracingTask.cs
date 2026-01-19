@@ -20,7 +20,7 @@ namespace NeuroReachVR.Tasks
         [SerializeField] private float pathLength = 2f;
         
         [Header("Tracing Settings")]
-        [SerializeField] protected float pathWidth = 0.0025f; // 0.25cm Target
+        [SerializeField] protected float pathWidth = 0.02f; // INCREASED AGAIN: 2cm (20mm) for much better visibility
         [SerializeField] protected int pathSegments = 100; // INCREASED from 5 to 100 for high-res validation
         [SerializeField] protected float minAccuracy = 0.5f; // Lowered from 0.7 for easier gameplay
         
@@ -120,8 +120,6 @@ namespace NeuroReachVR.Tasks
             // 2. Check Input
             if (!inputHandler.HasValidInput)
             {
-                 if (Time.frameCount % 120 == 0)
-                    Debug.LogWarning($"[PathTracing] HasValidInput is FALSE. Mode: {inputHandler.CurrentMode}. Check connection or Input Actions.");
                 return;
             }
             
@@ -179,8 +177,8 @@ namespace NeuroReachVR.Tasks
             }
             
             currentPath.InitializePath(pathPoints);
-            // enforce 0.25cm for target path
-            currentPath.SetPathWidth(0.0025f); 
+            // Set path width for visibility (2cm = 0.02m)
+            currentPath.SetPathWidth(0.02f); 
             
             Debug.Log($"[PathTracingTask] Generated path from {pathStart} to {pathEnd} with {pathPoints.Count} points");
             
@@ -419,7 +417,6 @@ namespace NeuroReachVR.Tasks
                     if (Time.time - lastReleaseTime > DEBOUNCE_THRESHOLD)
                     {
                         isDebouncedPressed = true;
-                        Debug.Log("[PathTracing] Input Debounced STARTED > New Stroke");
                         if (currentPath != null)
                         {
                             currentPath.StartNewStroke();
@@ -429,7 +426,6 @@ namespace NeuroReachVR.Tasks
                     {
                         // Bounce Re-entry
                         isDebouncedPressed = true; 
-                         Debug.Log("[PathTracing] Input Debounced CONTINUED (Bounce)");
                     }
                 }
             }
@@ -442,16 +438,10 @@ namespace NeuroReachVR.Tasks
                    {
                        isDebouncedPressed = false;
                        lastReleaseTime = Time.time;
-                       Debug.Log("[PathTracing] Input Debounced ENDED");
                    }
                 }
             }
 
-            // Status Log - EVERY 30 FRAMES
-            if (Time.frameCount % 30 == 0)
-            {
-                 Debug.Log($"[PathTracing] Raw: {rawPressed}, Debounced: {isDebouncedPressed}, Valid: {inputHandler.HasValidInput}, Path: {currentPath != null}");
-            }
 
             // Use Debounced state for drawing
             if (isDebouncedPressed)

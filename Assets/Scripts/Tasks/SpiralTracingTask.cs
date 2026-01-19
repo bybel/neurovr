@@ -12,8 +12,8 @@ namespace NeuroReachVR.Tasks
     public class SpiralTracingTask : PathTracingTask
     {
         [Header("Spiral Settings")]
-        [SerializeField] private float spiralStartRadius = 0.05f; // Smaller for easier mouse tracing
-        [SerializeField] private float spiralEndRadius = 0.3f;    // Smaller for easier mouse tracing
+        [SerializeField] private float spiralStartRadius = 0.15f; // INCREASED AGAIN: 15cm for much better visibility
+        [SerializeField] private float spiralEndRadius = 0.8f;    // INCREASED AGAIN: 80cm for much better visibility
         [SerializeField] private int spiralTurns = 2;             // Fewer turns for easier completion
         [SerializeField] private float tightnessFactor = 1f; // Higher = tighter spirals
         
@@ -101,7 +101,7 @@ namespace NeuroReachVR.Tasks
             
             Debug.Log($"[SpiralTracingTask] OnTaskStarted called. Difficulty: {(adaptiveController != null ? adaptiveController.CurrentLevel.ToString() : "NULL")}");
 
-            // Reduce path width for Spiral Task (default was 0.1f, making it 0.02f)
+            // Set path width for visibility (2cm = 0.02m, same as path task)
             SetDifficulty(0.02f, minAccuracy);
 
             if (adaptiveController != null && adaptiveController.CurrentLevel == DifficultyLevel.Easy)

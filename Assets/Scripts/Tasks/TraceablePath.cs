@@ -13,7 +13,7 @@ namespace NeuroReachVR.Tasks
     public class TraceablePath : MonoBehaviour
     {
         [Header("Path Settings")]
-        [SerializeField] private float pathWidth = 0.005f; // reduced from 0.04 to 0.005
+        [SerializeField] private float pathWidth = 0.02f; // INCREASED AGAIN: 2cm (20mm) for much better visibility
         [SerializeField] private Color targetColor = Color.blue;
         [SerializeField] private Color correctColor = Color.green;
         [SerializeField] private Color errorColor = Color.red;
@@ -25,7 +25,7 @@ namespace NeuroReachVR.Tasks
 
 
         [Header("Trace Settings")]
-        [SerializeField] private float traceWidth = 0.005f; // Match pathWidth (0.5cm)
+        [SerializeField] private float traceWidth = 0.03f; // INCREASED AGAIN: 3cm (30mm) for very clear visibility
 
         [Header("Components")]
         [SerializeField] private LineRenderer targetLineRenderer;
@@ -74,14 +74,15 @@ namespace NeuroReachVR.Tasks
         public float AverageDeviation => deviationCount > 0 ? totalDeviation / deviationCount : 0f;
 
         [Header("Scoring")]
-        [SerializeField] private float scoringTolerance = 0.1f; // INCREASED to 10cm (!). Guarantees score if you are on screen.
+        [SerializeField] private float scoringTolerance = 0.3f; // INCREASED AGAIN: 30cm for very forgiving scoring
         
         private float CalculateAccuracy()
         {
-            if (deviationCount == 0) return 1f;
+            // FIX: Return 0 if no valid points recorded (was returning 1.0 = 100%!)
+            if (deviationCount == 0) return 0f;
             
             float avgDeviation = totalDeviation / deviationCount;
-            // 0 -> 10cm mapping
+            // Map deviation to accuracy score
             return Mathf.Clamp01(1f - (avgDeviation / scoringTolerance));
         }
 
@@ -118,10 +119,9 @@ namespace NeuroReachVR.Tasks
                SetupTracedMesh();
             }
 
-            // FORCE small width for now to fix persistent huge paths
-            // Now that meshes are setup, this will actually render!
-            SetPathWidth(0.0025f); // 0.25cm (Target)
-            traceWidth = 0.005f; // 0.5cm (Trace - kept as requested)
+            // Set reasonable default widths for VR visibility
+            SetPathWidth(0.01f); // 1cm (Target) - visible from distance
+            traceWidth = 0.015f; // 1.5cm (Trace) - clear user feedback
         }
         
         private void SetupTargetMesh()
@@ -342,7 +342,8 @@ namespace NeuroReachVR.Tasks
 
         public void UpdateTracing(Vector3 worldPosition)
         {
-            if (!isActive || targetPath == null || targetPath.Count == 0 || currentSegment >= targetPath.Count - 1) return;
+            // FIX: Removed currentSegment check - allow continuous drawing even after completion
+            if (!isActive || targetPath == null || targetPath.Count == 0) return;
 
             // Ensure we have a stroke to add to
             if (currentStroke == null)
@@ -385,9 +386,9 @@ namespace NeuroReachVR.Tasks
                 // Let's use distance check. If the user is closer to a future point than the current one, advance.
                 // BUT only if that future point is "connected" to where we are.
                 
-                // CRITICAL FIX: Reduce LookAhead to prevent skipping bulk of the path
-                // Only look at next 3 points. Forces user to trace the geometric line.
-                int lookAhead = Mathf.Min(currentSegment + 3, targetPath.Count); 
+                // CRITICAL FIX: Increased look-ahead for more forgiving progression
+                // Look at next 15 points to allow for natural tracing variations
+                int lookAhead = Mathf.Min(currentSegment + 15, targetPath.Count); 
                 
                 for (int i = currentSegment; i < lookAhead; i++)
                 {
@@ -401,8 +402,8 @@ namespace NeuroReachVR.Tasks
                 }
 
                 // Tolerance Check
-                // Relaxed based on user feedback (was 0.03f) -> Now 6cm
-                float tolerance = Mathf.Max(pathWidth * 6f, 0.06f); 
+                // CRITICAL FIX: Very forgiving tolerance for VR tracing
+                float tolerance = 0.25f; // 25cm tolerance - very forgiving! 
                 
                 if (minDeviation < tolerance && bestSegment != -1)
                 {
