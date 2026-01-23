@@ -119,7 +119,8 @@ namespace NeuroReachVR.Data
         {
             string header = "Timestamp,PatientID,TaskType,Difficulty,SessionID,CompletionTime,Accuracy,SuccessRate," +
                            "MovementSmoothness,HandPositionX,HandPositionY,HandPositionZ,VelocityX,VelocityY,VelocityZ," +
-                           "ErrorCount,AttemptNumber,AdaptiveAdjustment";
+                           "ErrorCount,AttemptNumber,AdaptiveAdjustment,BalloonsSpawned,BalloonsPopped,BalloonsMissed," +
+                           "PopRate,TraceOverlap,TraceTime,OutOfBoundEvents,Score";
             WriteLine(header);
         }
 

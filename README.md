@@ -1,339 +1,292 @@
-# NeuroReachVR
+# NeuroReach VR (Meta Quest 3S, Pass-through MR)
 
-A VR rehabilitation application for fine motor control training, designed for neurological rehabilitation (stroke recovery, tremor management, motor impairments). Built with Unity for Meta Quest VR headsets.
+NeuroReach VR is a **pass-through mixed-reality (MR)** prototype built in **Unity (C#)** for **Meta Quest 3S** with **Logitech MX Ink stylus** support. It provides two short, repeatable upper-limb exercises designed around *clinically meaningful primitives* (reaching/grasping and tracing) and prioritizes **simple, clinician-readable metrics** exported as **CSV** for spreadsheet review.
 
-## 📋 Table of Contents
+> Scope note: This project is a **proof-of-concept prototype**. It is intended to support structured practice and logging, not to make diagnostic or clinical-efficacy claims.
 
-- [Overview](#overview)
-- [Features](#features)
-- [Requirements](#requirements)
-- [Setup Instructions](#setup-instructions)
-- [Scene Configuration](#scene-configuration)
-- [Building for Quest](#building-for-quest)
-- [Usage Guide](#usage-guide)
-- [Project Structure](#project-structure)
-- [Configuration](#configuration)
-- [Development](#development)
-- [Troubleshooting](#troubleshooting)
+---
 
-## 🎯 Overview
+## Table of contents
 
-NeuroReachVR is a VR-based rehabilitation platform that provides interactive exercises for fine motor control training. The application features adaptive difficulty, comprehensive data logging, and multimodal feedback to support patient recovery and therapist monitoring.
+- [System overview](#system-overview)
+- [Tasks](#tasks)
+  - [Task A: BalloonPop (reach-and-grasp)](#task-a-balloonpop-reach-and-grasp)
+  - [Task B: PathTrace (path silhouette tracing)](#task-b-pathtrace-path-silhouette-tracing)
+- [Difficulty modes (Easy vs Hard)](#difficulty-modes-easy-vs-hard)
+- [Scoring](#scoring)
+- [What gets logged](#what-gets-logged)
+- [Metrics glossary](#metrics-glossary)
+- [How to use the application](#how-to-use-the-application)
+- [Data export (CSV)](#data-export-csv)
+- [Implementation notes (high level)](#implementation-notes-high-level)
+- [Known limitations](#known-limitations)
 
-**Target Platform**: Meta Quest (Quest, Quest 2, Quest Pro, Quest 3, Quest 3S)  
-**Application ID**: `com.elsiga.neuroreachvr`  
-**Unity Version**: 2022+ (URP 17.2.0)
+---
 
-## ✨ Features
+## System overview
 
-### Rehabilitation Tasks
-- **Balloon Pop Task**: Reach-and-grasp training using hand tracking with pinch detection
-- **Path Tracing Task**: Fine motor control exercises with stylus input (Line, Curve, Circle, Square paths)
-- **Spiral Tracing Task**: Advanced path tracing with angular velocity tracking and progressive difficulty
+**Hardware / runtime**
+- **Headset:** Meta Quest 3S (pass-through MR)
+- **Input devices:**
+  - **Logitech MX Ink stylus** (6DoF) for PathTrace, including vibration (haptics)
+- **Runtime:** Unity on Android (Quest), using **OpenXR** device access.
 
-### Core Systems
-- **Adaptive Difficulty**: Rule-based system with hysteresis to prevent rapid difficulty changes
-- **Data Logging**: Comprehensive CSV logging with kinematic time-series data (60Hz sampling)
-- **Multimodal Feedback**: Haptic, visual, and audio feedback for success/error states
-- **Patient Management**: Session tracking, patient data persistence, CSV export
-- **Input Support**: Hand tracking (XR Hands + legacy fallback) and stylus input
+**Design goals**
+- Keep users grounded in the real environment (pass-through MR), reduce disorientation and discomfort.
+- Provide tasks that are **short, repeatable**, and easy to administer.
+- Provide **immediate feedback** (visual urgency + haptics) and **auditable outputs** (CSV logs with interpretable metrics).
 
-### Technical Features
-- Object pooling for performance optimization
-- Async data logging to prevent frame drops
-- Real-time accuracy tracking and visual feedback
-- Movement smoothness calculation
-- Tremor analysis capabilities
+---
 
-## 📦 Requirements
+## Tasks
 
-### Development Environment
-- **Unity**: 2022.3 LTS or newer
-- **Unity Packages**:
-  - Universal Render Pipeline (URP) 17.2.0
-  - Meta XR SDK 78.0.0
-  - Unity XR Hands 1.7.1
-  - Unity OpenXR 1.16.0
-  - Unity Input System 1.14.2
-  - TextMesh Pro 2.0.0
+### Task A: BalloonPop (reach-and-grasp)
 
-### Hardware
-- **VR Headset**: Meta Quest (Quest, Quest 2, Quest Pro, Quest 3, Quest 3S)
-- **Development PC**: Windows 10/11 or macOS
-- **Android SDK**: Minimum SDK 32, Target SDK 32
+**Goal:** Train repeated reaching and grasping in peri-personal space under time pressure.
 
-### Software
-- Android SDK (for Quest builds)
-- Meta Quest Developer Hub (for deployment)
-- ADB (Android Debug Bridge) for device connection
+**Interaction**
+- Balloons spawn in a forward “reach dome” in front of the user.
+- A balloon is popped via a **stylus-tracked motion**, in which you are required to prick the balloon with the stylus.
 
-## 🚀 Setup Instructions
+**Urgency cue**
+- Each balloon has a lifetime **T**.
+- Balloon color shifts **blue → red** from spawn to expiry, so urgency is visible without needing text UI.
 
-### 1. Clone/Download Project
+**What this task trains (practical interpretation)**
+- Repetition count (number of successful reaches)
+- Movement initiation under time pressure (misses / slower reaction times)
+- Throughput over a block (pops per minute)
 
-```bash
-git clone <repository-url>
-cd NeuroVR
+---
+
+### Task B: PathTrace (path silhouette tracing)
+
+**Goal:** Train fine motor control, steady stylus motion, and visuomotor error correction.
+
+**Interaction**
+- A target silhouette (e.g., line/polygon/circle/spiral) is shown on a stable drawing plane anchored in front of the user (aligned to a table surface when available).
+- The user traces the target using the **MX Ink stylus**.
+
+**Tolerance corridor + haptic error feedback**
+- The target is represented as a polyline.
+- A tolerance corridor of half-width **τ** (in mm) is defined around the target.
+- At runtime we compute the shortest distance **d** from the stylus tip to the target polyline:
+  - If **d > τ**, the stylus **vibrates in pulses** until the trace returns inside the corridor (**d ≤ τ**).
+- This provides a **binary, easy-to-interpret error signal** without requiring reading text.
+
+**What this task trains (practical interpretation)**
+- Accuracy (fraction of trace inside corridor / overlap)
+- Speed–accuracy trade-offs (time vs overlap)
+- Error frequency and stability (out-of-bounds events and time)
+
+---
+
+## Difficulty modes (Easy vs Hard)
+
+The prototype exposes **two clinician-selectable profiles per task**. Parameters are intentionally visible and adjustable rather than “opaque” adaptive difficulty.
+
+### BalloonPop parameters (defaults)
+- **Easy:** lifetime **L = 10 s**, spawn radius **r ∈ [0.35, 0.55] m**
+- **Hard:** lifetime **L = 5 s**,  spawn radius **r ∈ [0.45, 0.75] m**
+
+### PathTrace parameters (defaults)
+- Primary knob: corridor half-width **τ**
+  - **Easy:** **τ = 20 mm**
+  - **Hard:** **τ = 8 mm**
+- Secondary knobs:
+  - optional **time limit T** for the trial (selectable before start)
+  - **path complexity**:
+    - Easy: simpler shapes (e.g., lines, polygons)
+    - Hard: more complex curves (e.g., circles, spirals)
+
+---
+
+## Scoring
+
+Scores are designed to be **simple, interpretable**, and aligned with the feedback mechanisms.
+
+### BalloonPop score (per balloon)
+Let:
+- **T** = balloon lifetime (seconds)
+- **t_p** = time since spawn when the balloon is popped (seconds)
+- **S_max** = max score per balloon (default: **10**)
+
+Normalized score:
+```
+s = max(0, 1 - t_p / T)
 ```
 
-### 2. Open in Unity
-
-1. Launch Unity Hub
-2. Open the project folder (`NeuroVR`)
-3. Unity will import packages automatically (may take several minutes)
-
-### 3. Verify Package Installation
-
-Ensure the following packages are installed (check `Packages/manifest.json`):
-- `com.meta.xr.sdk.all` (version 78.0.0)
-- `com.unity.xr.hands` (version 1.7.1)
-- `com.unity.xr.openxr` (version 1.16.0)
-- `com.unity.inputsystem` (version 1.14.2)
-- `com.unity.render-pipelines.universal` (version 17.2.0)
-
-### 4. Configure Build Settings
-
-1. Go to **File → Build Settings**
-2. Select **Android** platform
-3. Click **Switch Platform** (if not already on Android)
-4. Ensure **OpenXR** is selected as the XR Plugin Provider:
-   - Go to **Edit → Project Settings → XR Plug-in Management → OpenXR**
-   - Enable OpenXR and configure for Quest
-
-### 5. Configure Oculus Settings
-
-1. Go to **Edit → Project Settings → XR Plug-in Management → Oculus**
-2. Verify hand tracking is enabled
-3. Check **Assets/Oculus/OculusProjectConfig.asset** settings
-
-## 🎮 Scene Configuration
-
-### Quick Setup (Recommended)
-
-Use the built-in Scene Setup Helper:
-
-1. Open your scene in Unity
-2. Go to **NeuroReachVR → Scene Setup Helper** in the menu bar
-3. Review component status (green checkmarks = present, orange X = missing)
-4. Click **"Create Core Systems GameObject"** to auto-create missing components
-5. Follow the dialog instructions to complete setup
-
-### Manual Setup
-
-#### Required Components
-
-Your scene must contain these components:
-
-1. **GameManager** (`NeuroReachVR.Core.GameManager`)
-   - Central orchestrator for the application
-   - Assign references to: InputHandler, AdaptiveDifficultyController, DataLogger, KinematicDataCollector, MultimodalFeedback, Tasks, HUDManager
-
-2. **InputHandler** (`NeuroReachVR.Input.InputHandler`)
-   - Handles all input sources (hand tracking, stylus)
-   - Assign references to: HandTrackingXRHands (left/right), HandTrackingManager (legacy), StylusInputManager
-
-3. **HUDManager** (`HUDManager`)
-   - Manages UI menus and navigation
-   - Assign references to all menu GameObjects and buttons
-
-4. **DataLogger** (`NeuroReachVR.Data.DataLogger`)
-   - Handles CSV data logging
-   - Configure logging settings in Inspector
-
-5. **KinematicDataCollector** (`NeuroReachVR.Data.KinematicDataCollector`)
-   - Collects movement data at 60Hz
-   - Automatically finds InputHandler
-
-6. **AdaptiveDifficultyController** (`NeuroReachVR.Core.AdaptiveDifficultyController`)
-   - Manages adaptive difficulty
-   - Assign DifficultyProfile ScriptableObjects (Easy, Medium, Hard)
-
-7. **MultimodalFeedback** (`NeuroReachVR.Feedback.MultimodalFeedback`)
-   - Coordinates all feedback types
-   - Assign references to: HapticFeedbackManager, VisualFeedbackManager, AudioFeedbackManager
-
-8. **Task Components**
-   - **BalloonPopTask**: Assign balloon prefab, configure spawn settings
-   - **PathTracingTask**: Assign TraceablePath prefab, configure path settings
-   - **SpiralTracingTask**: Inherits from PathTracingTask, configure spiral parameters
-
-#### Scene Setup Steps
-
-1. **Create Core Systems GameObject**:
-   ```
-   [Core Systems]
-   ├── GameManager
-   ├── DataLogger
-   ├── KinematicDataCollector
-   ├── AdaptiveDifficultyController
-   └── MultimodalFeedback
-   ```
-
-2. **Create Input GameObject**:
-   ```
-   [Input Systems]
-   ├── InputHandler
-   ├── HandTrackingXRHands (Left)
-   ├── HandTrackingXRHands (Right)
-   └── StylusInputManager (optional)
-   ```
-
-3. **Create UI GameObject**:
-   ```
-   [UI]
-   └── HUDManager
-   ```
-
-4. **Create Task GameObjects**:
-   ```
-   [Tasks]
-   ├── BalloonPopTask
-   ├── PathTracingTask
-   └── SpiralTracingTask
-   ```
-
-5. **Assign References**:
-   - In GameManager Inspector, assign all system references
-   - In InputHandler Inspector, assign hand tracking components
-   - In HUDManager Inspector, assign all menu GameObjects and buttons
-   - In AdaptiveDifficultyController, assign DifficultyProfile assets
-
-6. **Create Difficulty Profiles**:
-   - Create ScriptableObject assets for Easy, Medium, Hard difficulty
-   - Configure parameters for each task type
-   - Assign to AdaptiveDifficultyController
-
-### Verify Setup
-
-Use the **Pre-Deployment Verification** tool:
-1. Go to **NeuroReachVR → Pre-Deployment Checklist**
-2. Review all checks
-3. Fix any issues highlighted in red
-
-## 📱 Building for Quest
-
-### Prerequisites
-
-1. **Enable Developer Mode** on your Quest headset:
-   - Open Oculus app on phone
-   - Go to Settings → Developer Mode
-   - Enable Developer Mode
-
-2. **Connect Quest to PC**:
-   - Use USB-C cable
-   - Allow USB debugging when prompted on headset
-
-3. **Verify ADB Connection**:
-   ```bash
-   adb devices
-   ```
-   Should show your device listed
-
-### Build Steps
-
-1. **Configure Build Settings**:
-   - File → Build Settings
-   - Platform: Android
-   - Architecture: ARM64
-   - Build System: Gradle (recommended)
-
-2. **Player Settings**:
-   - Company Name: `DefaultCompany` (or your company)
-   - Product Name: `NeuroReachVR`
-   - Package Name: `com.elsiga.neuroreachvr`
-   - Minimum API Level: 32
-   - Target API Level: 32
-
-3. **Build APK**:
-   - Click **Build** (or Build and Run)
-   - Choose output directory
-   - Wait for build to complete
-
-4. **Deploy to Quest**:
-   - If using "Build and Run", deployment is automatic
-   - Otherwise, use ADB:
-     ```bash
-     adb install -r path/to/your.apk
-     ```
-
-### Alternative: Build via Command Line
-
-```bash
-Unity -batchmode -quit -projectPath . -buildTarget Android -buildPath ./Builds/NeuroVR.apk
+Points added for that balloon:
+```
+ΔScore = S_max * s
 ```
 
-## 🎯 Usage Guide
+- **Fast pops** → higher score
+- **Expired balloons** → add **0**
 
-### For Patients
+### PathTrace score (per path stage)
+Let:
+- **L** = target path length
+- **l_trace** = traced length credited as “covered” (progress along the path)
+- **S_max** = max score per stage (default: **10**)
 
-1. **Launch Application**: Start NeuroReachVR on Quest headset
-2. **Login**: Enter Patient ID when prompted
-3. **Select Task**: Choose from Balloon Pop, Path Tracing, or Spiral Tracing
-4. **Select Difficulty**: Choose Easy, Medium, or Hard (or let adaptive system choose)
-5. **Start Trial**: Begin the exercise
-6. **Complete Exercise**: Follow on-screen instructions
-7. **View Results**: Review score and progress
-
-### For Therapists/Researchers
-
-1. **Patient Management**: Set patient ID before starting session
-2. **Data Export**: CSV files are saved to device storage
-   - Location: `Application.persistentDataPath` (typically `/sdcard/Android/data/com.elsiga.neuroreachvr/files/`)
-3. **Review Data**: Export CSV files contain:
-   - Task attempts with timestamps
-   - Performance metrics (accuracy, completion time)
-   - Kinematic time-series data (position, velocity, acceleration)
-   - Adaptive difficulty adjustments
-
-### Input Methods
-
-- **Hand Tracking**: Use pinch gesture to interact (Balloon Pop task)
-- **Stylus**: Use stylus for precise tracing (Path/Spiral Tracing tasks)
-- **Auto-Detection**: System automatically selects best available input method
-
-## 📁 Project Structure
-
+Normalized score:
 ```
-NeuroVR/
-├── Assets/
-│   ├── Scripts/
-│   │   ├── Core/              # Core game systems
-│   │   │   ├── GameManager.cs
-│   │   │   ├── AdaptiveDifficultyController.cs
-│   │   │   ├── PatientDataManager.cs
-│   │   │   └── ServiceLocator.cs
-│   │   ├── Tasks/             # Rehabilitation tasks
-│   │   │   ├── BaseTask.cs
-│   │   │   ├── BalloonPopTask.cs
-│   │   │   ├── PathTracingTask.cs
-│   │   │   └── SpiralTracingTask.cs
-│   │   ├── Input/             # Input handling
-│   │   │   ├── InputHandler.cs
-│   │   │   ├── HandTrackingXRHands.cs
-│   │   │   └── StylusInputManager.cs
-│   │   ├── Data/              # Data collection
-│   │   │   ├── DataLogger.cs
-│   │   │   └── KinematicDataCollector.cs
-│   │   ├── Feedback/           # Feedback systems
-│   │   │   ├── MultimodalFeedback.cs
-│   │   │   ├── HapticFeedbackManager.cs
-│   │   │   ├── VisualFeedbackManager.cs
-│   │   │   └── AudioFeedbackManager.cs
-│   │   ├── UI/                 # User interface
-│   │   │   ├── HUDManager.cs
-│   │   │   ├── MenuManager.cs
-│   │   │   └── AccessibleUI.cs
-│   │   ├── Utils/              # Utilities
-│   │   │   ├── NeuroVRConstants.cs
-│   │   │   └── ValidationHelper.cs
-│   │   └── Editor/             # Editor tools
-│   │       ├── SceneSetupHelper.cs
-│   │       └── PreDeploymentVerification.cs
-│   ├── Prefabs/                # Prefab assets
-│   ├── Resources/              # Resource assets
-│   └── StreamingAssets/        # Streaming assets
-├── ProjectSettings/            # Unity project settings
-├── Packages/                   # Package manifests
-└── README.md                   # This file
+s = min(1, l_trace / L)
 ```
 
+Points added:
+```
+ΔScore = S_max * s
+```
+
+- **Full completion / overlap** → higher score
+- Traces outside the corridor reduce credited progress, and haptics highlight errors.
+
+---
+
+## What gets logged
+
+NeuroReach VR is designed around **clinician-readable outputs**:
+- **No specialized signal processing required**
+- Metrics emphasize **counts**, **time**, and **accuracy/overlap**
+
+### BalloonPop (per session block)
+- Balloons spawned
+- Balloons popped
+- Balloons expired (missed)
+- Mean reaction time (**t_p**)
+- Pop rate (pops per minute)
+- Total score
+
+### PathTrace (per trial)
+- Completion time (with flags for *completed* vs *timed out*)
+- Overlap (% samples within corridor)
+- Total out-of-corridor duration
+- Out-of-bounds events (debounced count)
+- Total score (progress/completion)
+
+---
+
+## Metrics glossary
+
+The table below mirrors the intended “how a clinician can use it” interpretation.
+
+<table>
+  <thead>
+    <tr>
+      <th>Task</th>
+      <th>Metric</th>
+      <th>What it measures (computed)</th>
+      <th>Practical interpretation</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="4" style="text-align:center;">BalloonPop</td>
+      <td>Balloons popped</td>
+      <td>Count of successful pops in a block</td>
+      <td>Repetition count (completed reaches)</td>
+    </tr>
+    <tr>
+      <td>Balloons missed</td>
+      <td>Count of expired balloons</td>
+      <td>Time-pressure sensitivity / slower initiation</td>
+    </tr>
+    <tr>
+      <td>Pop rate</td>
+      <td>Pops per minute over block duration</td>
+      <td>Throughput/efficiency over time</td>
+    </tr>
+    <tr>
+      <td>Score</td>
+      <td>&Sigma; S<sub>max</sub> * max(0, 1 - t<sub>p</sub> / T)</td>
+      <td>Rewards faster responses under time pressure</td>
+    </tr>
+    <tr>
+      <td rowspan="4" style="text-align:center;">PathTrace</td>
+      <td>Overlap (%)</td>
+      <td>Fraction of samples within corridor</td>
+      <td>Accuracy / fine motor control summary</td>
+    </tr>
+    <tr>
+      <td>Trace time</td>
+      <td>Time to completion or timeout</td>
+      <td>Speed/efficiency; compare against overlap</td>
+    </tr>
+    <tr>
+      <td>Out-of-bounds events</td>
+      <td>Debounced corridor-exit count</td>
+      <td>Error frequency / subtle instability</td>
+    </tr>
+    <tr>
+      <td>Score</td>
+      <td>&Sigma; S<sub>max</sub> * min(1, l<sub>trace</sub> / L)</td>
+      <td>Completion/progress incentive</td>
+    </tr>
+  </tbody>
+</table>
+
+---
+
+## How to use the application
+
+A typical session flow (therapist/clinician administered):
+
+1. **Start NeuroReach VR** (pass-through MR).
+2. In the **clinician menu**, select:
+   - **Patient ID**
+   - **Task order** (BalloonPop or PathTrace)
+   - **Difficulty** (Easy / Hard)
+   - **Duration / time limit** (block duration for BalloonPop; optional time limit for PathTrace)
+3. Patient completes the selected task(s).
+4. After each block/trial, the application provides:
+   - **Score**
+   - Core performance indicators (counts/time/overlap) in the saved logs
+5. Repeat blocks as needed for practice.
+6. **Export/retrieve CSV logs** for review.
+
+---
+
+## Data export (CSV)
+
+The system exports **per-trial summary metrics** in **CSV** format for direct spreadsheet review.
+
+Export contents:
+- **One row per trial** including:
+  - timestamp
+  - Patient ID
+  - task type
+  - difficulty profile
+  - duration / time limit
+  - task-specific metrics (listed above)
+
+Additionally, an **event-level log** may also be produced, capturing events such as:
+- BalloonPop: spawn, pop, expiry
+- PathTrace: trace start, trace end, timeout
+
+> Retrieval: Logs are stored in the application’s persistent storage on the Quest device. Use **Quest Developer Hub** or **ADB** to pull the CSV files from the headset for analysis.
+
+---
+
+## Implementation notes (high level)
+
+- **Anchoring / coordinate frames**
+  - A local task frame is defined relative to the user’s head pose at trial start.
+  - Balloon positions are sampled within this frame to keep reach distances consistent.
+  - PathTrace spawns a stable drawing plane at a fixed offset in front of the user to reduce drift effects during a trial.
+
+- **Haptics**
+  - Stylus vibration is triggered on corridor exit (d > τ).
+  - Pulses are debounced to avoid constant buzzing and to keep error feedback perceivable.
+
+- **Parameterization**
+  - Key parameters (lifetimes, spawn radii, corridor widths, time limits) are stored in a **JSON config** file loaded at startup.
+
+---
+
+## Known limitations
+
+- The initial evaluation was a **non-patient feasibility pilot** (healthy participants); no clinical-efficacy claims are made.
+- Participants reported occasional **spatial drift** of virtual elements (a priority for future iterations).
+- Some users requested clearer onboarding and stronger completion feedback (sound/visual confirmations).
