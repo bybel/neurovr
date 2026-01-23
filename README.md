@@ -9,6 +9,7 @@ NeuroReach VR is a **pass-through mixed-reality (MR)** prototype built in **Unit
 ## Table of contents
 
 - [System overview](#system-overview)
+- [Developer setup & Quest build](./DEVELOPMENT_SETUP.md)
 - [Tasks](#tasks)
   - [Task A: BalloonPop (reach-and-grasp)](#task-a-balloonpop-reach-and-grasp)
   - [Task B: PathTrace (path silhouette tracing)](#task-b-pathtrace-path-silhouette-tracing)
